@@ -39,9 +39,9 @@ class Config:
     T_TOTAL: int = T_TRAIN + T_WARMUP + T_EVAL
 
     # ── 任务参数 ──────────────────────────────────────────────
-    LAMBDA_HIGH: float = 8.0                          # 高负载卫星到达率（tasks/slot）
+    LAMBDA_HIGH: float = 5.0                          # 高负载卫星到达率（tasks/slot）
     LAMBDA_LOW: float = 0.1                             # 低负载卫星到达率
-    LAMBDA_HIGH_RATIO: float = 1 / 3
+    LAMBDA_HIGH_RATIO: float = 1 / 5
     LAMBDA: float = LAMBDA_HIGH * LAMBDA_HIGH_RATIO + LAMBDA_LOW * (1 - LAMBDA_HIGH_RATIO)
     S_MIN: float = 10e6                                 # bits
     S_MAX: float = 50e6                                 # bits
@@ -66,7 +66,7 @@ class Config:
     # ── 电池参数 ──────────────────────────────────────────────
     E_CAP: float = 10 * 3600                            # J，电池容量
     P_SOLAR_MAX: float = 30.0                           # W，最大太阳能功率
-    P_HOUSEKEEPING: float = 10.0                        # W，维持卫星运行的基础功耗
+    P_HOUSEKEEPING: float = 5.0                         # W，维持卫星运行的基础功耗
                                                         # （姿控/OBC/热控等子系统，参考 NASA SOA 2020
                                                         #  及 Li et al. IEEE TSC 2024 式(4) 中 E_a(t) 项）
     DOD_MAX: float = 0.8
