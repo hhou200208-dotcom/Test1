@@ -463,9 +463,10 @@ class Satellite:
         delta_trans = (cfg.P_T * sum(
             task.size / b_nm for _, task, b_nm in self._forwarded_tasks if b_nm > 0
         ) / cfg.E_CAP)
+        delta_house = cfg.P_HOUSEKEEPING * cfg.TAU / cfg.E_CAP
         delta_solar_raw = self.solar_power * cfg.TAU / cfg.E_CAP
         delta_solar = min(delta_solar_raw, max(dod_before - cfg.DOD_MIN, 0.0))
-        delta = delta_comp + delta_trans - delta_solar
+        delta = delta_comp + delta_trans + delta_house - delta_solar
 
         a = cfg.A_COEF
         l_prime = ((10 ** (a * (dod_before - 1)))

@@ -39,7 +39,7 @@ class Config:
     T_TOTAL: int = T_TRAIN + T_WARMUP + T_EVAL
 
     # ── 任务参数 ──────────────────────────────────────────────
-    LAMBDA_HIGH: float = 3.0                          # 高负载卫星到达率（tasks/slot）
+    LAMBDA_HIGH: float = 8.0                          # 高负载卫星到达率（tasks/slot）
     LAMBDA_LOW: float = 0.1                             # 低负载卫星到达率
     LAMBDA_HIGH_RATIO: float = 1 / 3
     LAMBDA: float = LAMBDA_HIGH * LAMBDA_HIGH_RATIO + LAMBDA_LOW * (1 - LAMBDA_HIGH_RATIO)
@@ -66,6 +66,9 @@ class Config:
     # ── 电池参数 ──────────────────────────────────────────────
     E_CAP: float = 10 * 3600                            # J，电池容量
     P_SOLAR_MAX: float = 30.0                           # W，最大太阳能功率
+    P_HOUSEKEEPING: float = 10.0                        # W，维持卫星运行的基础功耗
+                                                        # （姿控/OBC/热控等子系统，参考 NASA SOA 2020
+                                                        #  及 Li et al. IEEE TSC 2024 式(4) 中 E_a(t) 项）
     DOD_MAX: float = 0.8
     DOD_MIN: float = 0.1
     DOD_INIT_LOW: float = 0.2                           # DoD初始值下界
@@ -196,7 +199,7 @@ class Config:
         avg_comp_power = self.KAPPA * (self.CPU_FREQ ** 3) / (avg_nb ** 2)
         avg_trans_power = self.P_T * self.LAMBDA * self.S_AVG / self.B_AVG
         avg_solar_power = self.P_SOLAR_MAX * self.LIGHT_RATIO
-        total = avg_comp_power + avg_trans_power
+        total = avg_comp_power + avg_trans_power + self.P_HOUSEKEEPING
         print(f"[Config] 假设1验证（功耗/充电比={total/avg_solar_power:.6f}）:",
               "✓" if total <= avg_solar_power else "⚠ 不满足")
 
