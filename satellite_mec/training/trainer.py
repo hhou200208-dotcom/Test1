@@ -111,7 +111,7 @@ class MAPPOTrainer:
             # Critic 更新
             for start in range(0, n_slot, cfg.MINIBATCH):
                 idx    = slot_idx[start:min(start + cfg.MINIBATCH, n_slot)]
-                values = self.critic.get_value(critic_states[idx])
+                values = self.critic.get_value(critic_states[idx].astype(np.float32))
                 critic_loss = nn.MSELoss()(values, target_returns[idx])
                 self.critic_optimizer.zero_grad()
                 critic_loss.backward()
