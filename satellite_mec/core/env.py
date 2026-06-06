@@ -199,6 +199,7 @@ class SatelliteMECEnv(EnvInterface):
                 slot_e2e_delays.append(real_delay)
                 if real_delay <= task.deadline:
                     slot_satisfied += 1
+                    rewards[sat.sat_id] += cfg.COMPLETION_BONUS
 
         self.episode_done += slot_done
         slot_timeout_count = self.episode_timeout - self._prev_episode_timeout

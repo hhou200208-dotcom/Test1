@@ -80,6 +80,7 @@ class Config:
     ETA: float = 0.5                                    # DoD虚拟队列权重
     MU: float = 0.1                                     # 滑动平均系数
     ALPHA_BAR_INIT: float = MAX_DISPATCH / 2.0
+    COMPLETION_BONUS: float = 1.0                       # 任务完成奖励（直接激励CR）
 
     # ── MAPPO 参数 ────────────────────────────────────────────
     GAMMA: float = 0.99
