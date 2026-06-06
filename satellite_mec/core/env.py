@@ -169,6 +169,9 @@ class SatelliteMECEnv(EnvInterface):
                     action = sat_actions[task_action_idx]; task_action_idx += 1
                 else:
                     action = int(np.argmax(mask))
+                # 策略明确要求 local (=0)，但本地容量满时保留在队列等下一时隙，不偷偷转发
+                if action == 0 and mask[0] == 0:
+                    continue
                 if action >= len(mask) or mask[action] == 0:
                     action = int(np.argmax(mask))
 

@@ -208,12 +208,15 @@ class MHSPOPolicy(PolicyInterface):
             best_action = 0
             best_cost   = float('inf')
 
+            # 滚动并发数：包含本时隙已分配到本地的任务，避免过度乐观
+            qb_num_eff = qb_num + float(self._local_count[n])
+
             # 动作0：本地计算（约束 12c）
             if self._local_count[n] < cfg.MAX_DISPATCH:
                 d_comp, e_comp = self._est_comp_delay_energy(
-                    task, t + 1, qb_num, qb_pred, cfg.CPU_FREQ)
+                    task, t + 1, qb_num_eff, qb_pred, cfg.CPU_FREQ)
                 if d_comp <= task.remain_time(t) + cfg.TAU:
-                    c = self._local_cost_norm(task, qb_num, q_tilde_f, d_comp, e_comp)
+                    c = self._local_cost_norm(task, qb_num_eff, q_tilde_f, d_comp, e_comp)
                     if c < best_cost:
                         best_cost, best_action = c, 0
 
