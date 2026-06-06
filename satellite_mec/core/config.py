@@ -39,7 +39,7 @@ class Config:
     T_TOTAL: int = T_TRAIN + T_WARMUP + T_EVAL
 
     # ── 任务参数 ──────────────────────────────────────────────
-    LAMBDA_HIGH: float = 3.0                          # 高负载卫星到达率（tasks/slot）
+    LAMBDA_HIGH: float = 2.0                          # 高负载卫星到达率（tasks/slot）
     LAMBDA_LOW: float = 0.1                             # 低负载卫星到达率
     LAMBDA_HIGH_RATIO: float = 1 / 5
     LAMBDA: float = LAMBDA_HIGH * LAMBDA_HIGH_RATIO + LAMBDA_LOW * (1 - LAMBDA_HIGH_RATIO)
