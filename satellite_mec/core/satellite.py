@@ -138,7 +138,7 @@ class Satellite:
 
     def init_temp_state(self) -> None:
         """初始化当前时隙的预测状态（每时隙调度前调用一次）。"""
-        self.nb_hat = max(self.nb - self.last_done_count + int(math.floor(self.alpha_bar)), 0)
+        self.nb_hat = max(self.nb - self.last_done_count, 0)
         self.z_hat  = self.z
         self.alpha_num = 0
         self._comp_energy    = 0.0
