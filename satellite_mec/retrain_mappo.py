@@ -65,20 +65,26 @@ def main():
                  'GreedyDelay', 'LyapunovGreedy', 'MHSPO']:
         runner.setup_algorithm_dir(name)
 
+    lyapunov_default = LyapunovCalculator(cfg)
+    lyapunov_no_dod  = LyapunovCalculator(cfg, use_battery_loss=False, use_dod_penalty=False)
+
     mappo        = MAPPOPolicy(cfg, name='MAPPO')
-    mappo_no_dod = create_mappo_no_dod(cfg, env)
+    mappo_no_dod = MAPPOPolicy(cfg, lyapunov_calc=lyapunov_no_dod, name='MAPPO_NoDod')
     local_only   = LocalOnlyPolicy(cfg, env)
     greedy_delay = GreedyDelayPolicy(cfg, env)
     lya_greedy   = LyapunovGreedyPolicy(cfg, env)
     mhspo        = MHSPOPolicy(cfg, env, rho_d=1.0, rho_e=1.0, V_lyapunov=10.0)
 
-    env.lyapunov_calc = LyapunovCalculator(cfg)
-
     # ── 训练 ──────────────────────────────────────────────────
-    logger.info("训练 MAPPO")
+    logger.info("训练 MAPPO（含DoD惩罚）")
+    env.lyapunov_calc = lyapunov_default
     runner.run_training(mappo, env)
-    logger.info("训练 MAPPO_NoDod")
+
+    logger.info("训练 MAPPO_NoDod（不含DoD惩罚，消融对比）")
+    env.lyapunov_calc = lyapunov_no_dod
     runner.run_training(mappo_no_dod, env)
+
+    env.lyapunov_calc = lyapunov_default  # 评估时用默认计算器
 
     # ── 预热 ──────────────────────────────────────────────────
     logger.info("预热（MHSPO DOGD）")
