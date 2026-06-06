@@ -92,13 +92,13 @@ class MAPPOTrainer:
         if not ab or not cb:
             return {}
 
-        states        = torch.FloatTensor(ab['states']).to(self.device)
-        actions       = torch.LongTensor(ab['actions']).to(self.device)
-        log_probs_old = torch.FloatTensor(ab['log_probs_old']).to(self.device)
-        masks         = torch.FloatTensor(ab['masks']).to(self.device)
-        advantages    = torch.FloatTensor(ab['advantages']).to(self.device)
-        critic_states  = torch.FloatTensor(cb['critic_states']).to(self.device)
-        target_returns = torch.FloatTensor(cb['target_returns']).to(self.device)
+        states        = torch.tensor(np.array(ab['states'],        dtype=np.float32)).to(self.device)
+        actions       = torch.tensor(np.array(ab['actions'],        dtype=np.int64)).to(self.device)
+        log_probs_old = torch.tensor(np.array(ab['log_probs_old'],  dtype=np.float32)).to(self.device)
+        masks         = torch.tensor(np.array(ab['masks'],          dtype=np.float32)).to(self.device)
+        advantages    = torch.tensor(np.array(ab['advantages'],     dtype=np.float32)).to(self.device)
+        critic_states  = torch.tensor(np.array(cb['critic_states'],  dtype=np.float32)).to(self.device)
+        target_returns = torch.tensor(np.array(cb['target_returns'], dtype=np.float32)).to(self.device)
 
         all_critic_losses, all_actor_losses = [], []
         all_ratios, all_entropies = [], []
@@ -111,7 +111,7 @@ class MAPPOTrainer:
             # Critic 更新
             for start in range(0, n_slot, cfg.MINIBATCH):
                 idx    = slot_idx[start:min(start + cfg.MINIBATCH, n_slot)]
-                values = self.critic.get_value(critic_states[idx].astype(np.float32))
+                values = self.critic.get_value(critic_states[idx])
                 critic_loss = nn.MSELoss()(values, target_returns[idx])
                 self.critic_optimizer.zero_grad()
                 critic_loss.backward()
