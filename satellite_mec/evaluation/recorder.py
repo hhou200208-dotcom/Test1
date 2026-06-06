@@ -119,6 +119,8 @@ class MetricsRecorder(MetricsInterface):
             'std_dod':    np.mean([s['std_dod'] for s in slots]),
             'avg_health_loss':        np.mean([s['avg_health_loss'] for s in slots]),
             'cumulative_health_loss': np.sum( [s['avg_health_loss'] for s in slots]),
+            'hl_per_done_task':       (np.sum([s['avg_health_loss'] for s in slots])
+                                       / max(total_done, 1)),
             'avg_qf_size': np.mean([s['avg_qf_size'] for s in slots]),
             'avg_qb_size': np.mean([s['avg_qb_size'] for s in slots]),
             'avg_z':       np.mean([s['avg_z'] for s in slots]),
@@ -143,6 +145,7 @@ class MetricsRecorder(MetricsInterface):
             'max_dod':                mean_ci('max_dod'),
             'avg_health_loss':        mean_ci('avg_health_loss'),
             'cumulative_health_loss': mean_ci('cumulative_health_loss'),
+            'hl_per_done_task':       mean_ci('hl_per_done_task'),
             'avg_qf_size':            mean_ci('avg_qf_size'),
             'avg_z':                  mean_ci('avg_z'),
         }
