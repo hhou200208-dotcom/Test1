@@ -163,7 +163,7 @@ def run_baselines_only(args: argparse.Namespace) -> None:
             ('total_queue',            'Total Queue Backlog (MB)', 'Total Queue (QF+QB)'),
             ('forwarded',              'Forwarded Tasks / Slot',   'Forwarded Tasks'),
             ('slot_satisfaction_rate', 'User Satisfaction Rate',
-             'User Satisfaction Rate (口径A: satisfied/(done+timeout))'),
+             'User Satisfaction Rate (satisfied/(done+timeout))'),
         ]
         for metric, ylabel, title in METRICS:
             plot_metric_per_run(curves_by_run, metric, ylabel, title, fig_dir, metric)
