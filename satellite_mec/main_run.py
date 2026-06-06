@@ -178,7 +178,7 @@ def run_baselines_only(args: argparse.Namespace) -> None:
                            snapshot_interval=snapshot_interval)
         plot_delay_pdf(curves_by_run, fig_dir, 'delay_pdf', delay_sample_interval=5)
         plot_satisfaction_pdf(curves_by_run, fig_dir,
-                              sample_key='satisfaction_samples_b',
+                              sample_key='satisfaction_samples_a',
                               filename='satisfaction_pdf')
 
     logger.info(f"基线评估完成！结果目录：{runner.base_dir}")

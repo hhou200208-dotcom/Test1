@@ -214,7 +214,7 @@ class ExperimentRunner:
         curves_by_run = [curves]
         plot_delay_pdf(curves_by_run, fig_dir)
         plot_satisfaction_pdf(curves_by_run, fig_dir,
-                              sample_key='satisfaction_samples_b',
+                              sample_key='satisfaction_samples_a',
                               filename='satisfaction_pdf')
         plot_metric_per_run(curves_by_run, 'completion_rate',
                             'Completion Rate', 'Task Completion Rate',

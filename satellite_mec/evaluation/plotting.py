@@ -344,7 +344,7 @@ def plot_delay_pdf(curves_by_run: List[Dict], output_dir: str,
 
 # ── 满意度 PDF ────────────────────────────────────────────────
 def plot_satisfaction_pdf(curves_by_run: List[Dict], output_dir: str,
-                          sample_key: str = 'satisfaction_samples_b',
+                          sample_key: str = 'satisfaction_samples_a',
                           filename: str = 'satisfaction_pdf') -> None:
     from scipy.stats import gaussian_kde
     os.makedirs(output_dir, exist_ok=True)
