@@ -271,11 +271,13 @@ class MHSPOPolicy(PolicyInterface):
 
     def _local_cost_norm(self, task: "Task", qb_num: float,
                          q_tilde_f: float, d_comp: float, e_comp: float) -> float:
-        """P3 第2项归一化：[FIX-C/D] 量纲统一 + / Q_NORM 归一化。"""
+        """P3 第2项归一化：[FIX-C/D] 全部换算为任务数 + / Q_NORM 归一化。"""
         cfg           = self.cfg
-        q_tilde_f_num = q_tilde_f / cfg.S_AVG
-        raw = (task.size * qb_num
-               - task.size * q_tilde_f_num
+        s_avg         = cfg.S_AVG
+        s_i_num       = task.size / s_avg
+        q_tilde_f_num = q_tilde_f / s_avg
+        raw = (s_i_num * qb_num
+               - s_i_num * q_tilde_f_num
                + self.V_lyapunov * (self.rho_d * d_comp + self.rho_e * e_comp))
         return raw / (self.Q_NORM + 1e-9)
 
