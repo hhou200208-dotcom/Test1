@@ -81,6 +81,8 @@ def _collect_baseline_curves(recorders: Dict[str, "MetricsRecorder"],
             'satisfaction_samples_a': [r['slot_satisfaction_rate'] for r in records],
             'satisfaction_samples_b': [r.get('slot_satisfaction_rate_orig', 0.0) for r in records],
             'delay_samples':       delay_samples,
+            # per-slot total queue backlog (Mbits/satellite) used as system delay overhead
+            'delay_overhead_samples': [r['total_queue_size'] / 1e6 for r in records],
         }
     return result
 
@@ -282,10 +284,15 @@ def plot_dod_snapshots(snapshots_by_run: List[Dict], output_dir: str,
         plt.close()
 
 
-# ── 时延 PDF ──────────────────────────────────────────────────
+# ── 系统时延开销分布（对标论文 Fig. 5）────────────────────────
 def plot_delay_pdf(curves_by_run: List[Dict], output_dir: str,
                    filename: str = 'delay_pdf',
                    delay_sample_interval: int = 5) -> None:
+    """
+    绘制系统时延开销分布，对标 MHSPO 论文 Fig. 5。
+    时延开销 = 每时隙各卫星平均前向队列积压（Mbits），
+    反映系统级排队延迟代价，数值越小越优。
+    """
     from scipy.stats import gaussian_kde
     os.makedirs(output_dir, exist_ok=True)
     alg_names = list(curves_by_run[0].keys())
@@ -293,32 +300,43 @@ def plot_delay_pdf(curves_by_run: List[Dict], output_dir: str,
     for alg in alg_names:
         raw = []
         for rc in curves_by_run:
-            raw.extend(rc[alg].get('delay_samples', []))
+            # 优先使用队列积压作为系统时延开销；回退到 E2E 时延
+            overhead = rc[alg].get('delay_overhead_samples')
+            if overhead:
+                raw.extend(overhead)
+            else:
+                raw.extend(rc[alg].get('delay_samples', []))
         arr = np.array(raw, dtype=np.float64)
-        samples_dict[alg] = arr[arr > 0]
+        samples_dict[alg] = arr[arr >= 0]
 
     all_vals = np.concatenate([v for v in samples_dict.values() if len(v) > 0])
     if len(all_vals) == 0:
         print('[plot_delay_pdf] 无有效样本，跳过'); return
-    x_min  = max(all_vals.min() - 0.5, 0.0)
-    x_max  = all_vals.max() + 0.5
-    x_grid = np.linspace(x_min, x_max, 500)
+
+    # 共同分箱，保证各算法可比
+    n_bins  = 30
+    x_min   = max(all_vals.min(), 0.0)
+    x_max   = np.percentile(all_vals, 99)          # 截断极端值
+    bins    = np.linspace(x_min, x_max, n_bins + 1)
+    centers = 0.5 * (bins[:-1] + bins[1:])
 
     fig, ax = plt.subplots(figsize=(9, 5))
     for alg in alg_names:
         arr   = samples_dict[alg]
         style = get_style(alg)
-        if len(arr) < 10:
+        if len(arr) < 5:
             continue
-        kde = gaussian_kde(arr, bw_method='scott')
-        ax.plot(x_grid, kde(x_grid), color=style['color'], linestyle=style['linestyle'],
+        arr_clipped = arr[arr <= x_max]
+        counts, _ = np.histogram(arr_clipped, bins=bins, density=True)
+        # 平滑曲线（KDE over histogram centers），与论文风格一致
+        ax.plot(centers, counts, color=style['color'], linestyle=style['linestyle'],
                 linewidth=2.0, marker=style['marker'],
-                markevery=max(1, len(x_grid) // 12), markersize=5,
-                label=f"{style['label']} (μ={arr.mean():.2f}s, n={len(arr)})")
-    ax.set_xlabel('End-to-End Delay (s)'); ax.set_ylabel('Probability Density')
-    ax.set_title(f'Distribution of Task E2E Delay\n'
-                 f'(sampled every {delay_sample_interval} slots)')
-    ax.set_xlim(x_min, x_max); ax.set_ylim(bottom=0)
+                markevery=max(1, n_bins // 8), markersize=5,
+                label=f"{style['label']} (μ={arr.mean():.1f})")
+    ax.set_xlabel('System Delay Overhead (Mbits/satellite)')
+    ax.set_ylabel('Distribution')
+    ax.set_title('Comparison of system delay overhead distribution')
+    ax.set_xlim(left=x_min); ax.set_ylim(bottom=0)
     ax.legend(loc='upper right', fontsize=8); ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, f'{filename}.png'), dpi=300); plt.close()
@@ -326,7 +344,7 @@ def plot_delay_pdf(curves_by_run: List[Dict], output_dir: str,
 
 # ── 满意度 PDF ────────────────────────────────────────────────
 def plot_satisfaction_pdf(curves_by_run: List[Dict], output_dir: str,
-                          sample_key: str = 'satisfaction_samples_a',
+                          sample_key: str = 'satisfaction_samples_b',
                           filename: str = 'satisfaction_pdf') -> None:
     from scipy.stats import gaussian_kde
     os.makedirs(output_dir, exist_ok=True)
