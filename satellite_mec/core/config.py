@@ -85,8 +85,8 @@ class Config:
     GAMMA: float = 0.99
     LAMBDA_GAE: float = 0.9
     EPSILON: float = 0.2                                # PPO clip ratio
-    BETA: float = 0.01                                  # 熵正则系数
-    LR_ACTOR: float = 3e-4
+    BETA: float = 0.05                                  # 熵正则系数（防止早期收敛，改善DoD探索）
+    LR_ACTOR: float = 1e-4
     LR_CRITIC: float = 1e-3
     MINIBATCH: int = 64
     EPOCH: int = 4
