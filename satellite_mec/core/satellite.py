@@ -427,11 +427,10 @@ class Satellite:
             self.last_done_count = 0
             return done_tasks, timeout_tasks
 
-        # 第二步：均分 CPU，推进计算
-        cpu_per_task    = cfg.CPU_FREQ / self.nb
+        # 第二步：每任务独占全频 CPU（dedicated-core model），推进计算
         tasks_to_remove = []
         for task in self.compute_queue:
-            processed = min(cpu_per_task * cfg.TAU / task.cpu_cycles,
+            processed = min(cfg.CPU_FREQ * cfg.TAU / task.cpu_cycles,
                             task.get_remaining_size())
             task.update_processed(processed)
             if task.is_done():

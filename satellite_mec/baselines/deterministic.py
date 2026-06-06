@@ -106,7 +106,7 @@ class GreedyDelayPolicy(PolicyInterface):
     @staticmethod
     def _est_comp_time(task, nb: int, cpu_freq: float, tau: float) -> float:
         nb = max(nb, 0)
-        slots = math.ceil(task.size * task.cpu_cycles * (nb + 1) / (cpu_freq * tau))
+        slots = math.ceil(task.size * task.cpu_cycles / (cpu_freq * tau))
         return slots * tau
 
 

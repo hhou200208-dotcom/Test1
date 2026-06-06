@@ -260,9 +260,9 @@ class MHSPOPolicy(PolicyInterface):
         nb_running = max(qb_pred.get(start_slot, qb_num_now) + 1.0, 1.0)
 
         while remaining > 1e-9 and tau < max_tau:
-            freq      = cpu_freq / nb_running
-            processed = min(freq * cfg.TAU / task.cpu_cycles, remaining)
-            energy   += cfg.KAPPA * processed * task.cpu_cycles * freq ** 2
+            processed = min(cpu_freq * cfg.TAU / task.cpu_cycles, remaining)
+            freq_e    = cpu_freq / nb_running   # frequency-division energy model
+            energy   += cfg.KAPPA * processed * task.cpu_cycles * (freq_e ** 2)
             remaining -= processed
             tau       += 1
             nb_running = max(qb_pred.get(tau, max(nb_running - 1.0, 1.0)), 1.0)
