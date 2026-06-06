@@ -85,11 +85,11 @@ class Config:
     GAMMA: float = 0.99
     LAMBDA_GAE: float = 0.9
     EPSILON: float = 0.2                                # PPO clip ratio
-    BETA: float = 0.05                                  # 熵正则系数（防止早期收敛，改善DoD探索）
+    BETA: float = 0.15                                  # 熵正则系数（防止早期收敛，改善DoD探索）
     LR_ACTOR: float = 1e-4
     LR_CRITIC: float = 1e-3
     MINIBATCH: int = 64
-    EPOCH: int = 4
+    EPOCH: int = 2
     K_ROLLOUT: int = 64                                 # rollout步长
 
     # ── 实验控制 ──────────────────────────────────────────────
@@ -161,11 +161,11 @@ class Config:
 
     # ── 维度查询 ──────────────────────────────────────────────
     def get_state_dim(self) -> int:
-        """Actor 输入维度：1(id) + 6(local) + N_nbr*5(neighbor) + 5(task) = 32"""
-        return 1 + 6 + self.N_NEIGHBORS * 5 + 5
+        """Actor 输入维度：1(id) + 6(local) + N_nbr*6(neighbor+xi) + 5(task) = 36"""
+        return 1 + 6 + self.N_NEIGHBORS * 6 + 5
 
     def get_critic_state_dim(self) -> int:
-        """Critic 输入维度：(state_dim - 5) * (1 + N_nbr) = 135"""
+        """Critic 输入维度：(state_dim - 5) * (1 + N_nbr) = 155"""
         return (self.get_state_dim() - 5) * (1 + self.N_NEIGHBORS)
 
     def get_action_dim(self) -> int:

@@ -282,6 +282,7 @@ class Satellite:
                 (info.get('qf_size', 0.0) - cfg.THETA) / (cfg.Q_F_MAX + 1e-9),
                 info.get('nb', 0) / max(cfg.MAX_DISPATCH, 1),
                 info.get('dod', 0.0) / cfg.DOD_MAX,
+                float(info.get('xi', 1)),
             ])
         remain = max(task.remain_time(current_slot), 0.0)
         task_state = np.array([
@@ -319,7 +320,7 @@ class Satellite:
             self.tau_switch / cfg.ORBIT_PERIOD,
         ], dtype=np.float32)
         return np.concatenate([id_feat, local_state,
-                               np.zeros(cfg.N_NEIGHBORS * 5, dtype=np.float32)])
+                               np.zeros(cfg.N_NEIGHBORS * 6, dtype=np.float32)])
 
     def _get_neighbor_node_state_28(self, neighbor_id: int, info: Dict) -> np.ndarray:
         cfg = self.cfg
@@ -333,7 +334,7 @@ class Satellite:
             info.get('tau_switch', 0) / cfg.ORBIT_PERIOD,
         ], dtype=np.float32)
         return np.concatenate([id_feat, local_state,
-                               np.zeros(cfg.N_NEIGHBORS * 5, dtype=np.float32)])
+                               np.zeros(cfg.N_NEIGHBORS * 6, dtype=np.float32)])
 
     def apply_action(self, task: "Task", action: int, current_slot: int,
                      neighbor_info: Dict,
