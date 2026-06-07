@@ -303,9 +303,12 @@ class SatelliteMECEnv(EnvInterface):
     # ── 观测接口 ──────────────────────────────────────────────
     def get_critic_obs(self) -> Dict[int, np.ndarray]:
         t = self.current_slot
+        # 方案 B：每次构造 critic 时同步算一次全局摘要（所有卫星共享）
+        global_summary = self.constellation.get_global_summary(t)
         return {
             sat.sat_id: sat.get_critic_state(
-                {nid: self._global_info.get(nid, {}) for nid in sat.neighbors}, t)
+                {nid: self._global_info.get(nid, {}) for nid in sat.neighbors},
+                t, global_summary=global_summary)
             for sat in self.constellation.satellites
         }
 

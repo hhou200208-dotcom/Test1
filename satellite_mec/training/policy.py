@@ -139,7 +139,8 @@ class MAPPOPolicy(PolicyInterface):
         """sequential 路径：env.step 在 apply_action 后调用，写入 buffer。"""
         if self._eval_mode:
             return
-        self.buffer.add_task(sat_id, slot_t, state, action, log_prob, mask)
+        self.buffer.add_task(sat_id, slot_t, state, action, log_prob, mask,
+                             task_reward=task_reward)
 
     def set_eval_mode(self) -> None:
         """切换到评估模式（确定性贪婪，不收集经验）。"""

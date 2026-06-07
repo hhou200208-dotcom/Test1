@@ -191,9 +191,16 @@ class Config:
         """
         return 1 + 10 + self.N_NEIGHBORS * 9 + 7
 
+    # 全局摘要（方案 B）维度：与星座大小 N 无关，可扩展到任意 N_SATS
+    GLOBAL_SUMMARY_DIM: int = 10
+
     def get_critic_state_dim(self) -> int:
-        """Critic 输入维度：(state_dim - task_dim) * (1 + N_nbr) = 47*5 = 235"""
-        return (self.get_state_dim() - 7) * (1 + self.N_NEIGHBORS)
+        """Critic 输入维度（方案 B 局部+全局摘要）：
+        (state_dim − task_dim) × (1 + N_nbr) + GLOBAL_SUMMARY_DIM
+        = 47×5 + 10 = 245
+        """
+        return ((self.get_state_dim() - 7) * (1 + self.N_NEIGHBORS)
+                + self.GLOBAL_SUMMARY_DIM)
 
     def get_action_dim(self) -> int:
         """动作空间大小：1(本地) + N_neighbors(转发) = 5"""

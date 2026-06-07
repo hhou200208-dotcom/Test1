@@ -108,6 +108,13 @@ class MetricsRecorder(MetricsInterface):
         slots         = self._current_eval_slots
         total_arrived = sum(s['arrived']    for s in slots)
         total_done    = sum(s['done_tasks'] for s in slots)
+        # 收集所有完成任务的 e2e 延迟样本
+        all_delays = []
+        for s in slots:
+            all_delays.extend(s.get('_slot_e2e_delays', []))
+        # 队列积压（MB）：avg_qf + avg_qb 的时隙平均
+        queue_mb = np.mean([s['avg_qf_size'] + s['avg_qb_size'] for s in slots]) / 1e6
+        slot_satisfaction = np.mean([s.get('slot_satisfaction_rate', 0.0) for s in slots])
         self._eval_run_records.append({
             'run_idx': run_idx, 'algorithm': self.algorithm_name,
             'n_slots': len(slots),
@@ -124,6 +131,12 @@ class MetricsRecorder(MetricsInterface):
             'avg_qf_size': np.mean([s['avg_qf_size'] for s in slots]),
             'avg_qb_size': np.mean([s['avg_qb_size'] for s in slots]),
             'avg_z':       np.mean([s['avg_z'] for s in slots]),
+            # 5 项标准指标聚合
+            'avg_satisfaction_rate': float(slot_satisfaction),
+            'avg_queue_mb':          float(queue_mb),
+            'avg_e2e_delay':         float(np.mean(all_delays)) if all_delays else 0.0,
+            'p95_e2e_delay':         float(np.percentile(all_delays, 95)) if all_delays else 0.0,
+            'n_delay_samples':       len(all_delays),
         })
         self._current_eval_slots = []
         self._eval_run_idx = run_idx + 1

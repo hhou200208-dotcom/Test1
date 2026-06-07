@@ -133,17 +133,25 @@ def main():
 
     runner.save_all_results(generate_plots=False)
 
-    # ── 摘要 ──────────────────────────────────────────────────
-    print("\n========== 评估结果汇总 (λ_high={:.1f}) ==========".format(args.lambda_high))
-    print(f"{'策略':<16} {'CR':>8} {'DoD':>8} {'HL/slot':>12} {'Sat':>8}")
-    print('-' * 60)
+    # ── 摘要：5 项标准指标 ────────────────────────────────────
+    print("\n" + "=" * 90)
+    print("  评估结果汇总 (λ_high={:.1f}) — 5 项标准指标".format(args.lambda_high))
+    print("=" * 90)
+    print(f"  {'策略':<16}{'CR':>8}{'满意度':>9}{'时延(s)':>10}"
+          f"{'HL/slot':>14}{'DoD':>8}{'队列MB':>9}")
+    print("-" * 90)
     for pol in policies:
         summary = runner.recorders[pol.name].get_summary()
-        if summary:
-            cr  = summary.get('completion_rate', {}).get('mean', 0)
-            hl  = summary.get('avg_health_loss', {}).get('mean', 0)
-            dod = summary.get('avg_dod', {}).get('mean', 0)
-            print(f"  {pol.name:<14} {cr:>8.4f} {dod:>8.4f} {hl:>12.3e}")
+        if not summary:
+            continue
+        cr  = summary.get('completion_rate', {}).get('mean', 0)
+        sat = summary.get('avg_satisfaction_rate', {}).get('mean', 0)
+        dly = summary.get('avg_e2e_delay', {}).get('mean', 0)
+        hl  = summary.get('avg_health_loss', {}).get('mean', 0)
+        dod = summary.get('avg_dod', {}).get('mean', 0)
+        qmb = summary.get('avg_queue_mb', {}).get('mean', 0)
+        print(f"  {pol.name:<14}{cr:>8.4f}{sat:>9.4f}{dly:>10.3f}"
+              f"{hl:>14.3e}{dod:>8.4f}{qmb:>9.2f}")
 
     logger.info(f"全部完成！结果目录：{runner.base_dir}")
 

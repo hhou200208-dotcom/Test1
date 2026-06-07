@@ -329,14 +329,20 @@ class Satellite:
         return np.concatenate([id_feat, local_state,
                                np.array(neighbor_state, dtype=np.float32), task_state])
 
-    def get_critic_state(self, neighbor_info: Dict, current_slot: int) -> np.ndarray:
-        """构建 Critic 输入的拼接观测向量（每节点 47 维 × 5 节点 = 235 维）。"""
+    def get_critic_state(self, neighbor_info: Dict, current_slot: int,
+                         global_summary: Optional[np.ndarray] = None) -> np.ndarray:
+        """构建 Critic 观测向量（方案 B: 局部 5 节点 47 维 + 全局摘要 10 维 = 245 维）。
+
+        global_summary 为 None 时使用 0 填充（向后兼容旧 critic）。
+        """
         own_state = self._get_node_state_47()
         neighbor_states = [
             self._get_neighbor_node_state_47(nid, neighbor_info.get(nid, {}))
             for nid in self.neighbors
         ]
-        return np.concatenate([own_state] + neighbor_states)
+        if global_summary is None:
+            global_summary = np.zeros(self.cfg.GLOBAL_SUMMARY_DIM, dtype=np.float32)
+        return np.concatenate([own_state] + neighbor_states + [global_summary])
 
     def _get_node_state_47(self) -> np.ndarray:
         """每节点 critic 子向量（与 Actor 的 (id + own + neighbor) 子集对齐，去掉 task）。"""

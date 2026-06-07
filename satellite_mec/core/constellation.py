@@ -261,3 +261,34 @@ class Constellation:
         }
         stats.update(self.get_health_stats())
         return stats
+
+    def get_global_summary(self, current_slot: int) -> np.ndarray:
+        """全局摘要 (10 维，星座大小无关)，供方案 B 的 critic 使用。
+
+        Layout (全部 ∈ [0, 1] 已归一化):
+            [mean_dod, std_dod, max_dod,
+             mean_qf, mean_qb,
+             mean_HL_per_slot, mean_cpu_freq, mean_solar,
+             mean_xi, slot_phase]
+        """
+        cfg  = self.cfg
+        sats = self.satellites
+        dods   = np.array([s.dod          for s in sats])
+        qfs    = np.array([s.qf_size      for s in sats])
+        qbs    = np.array([s.qb_size      for s in sats])
+        hls    = np.array([s.slot_health_loss for s in sats])
+        freqs  = np.array([s.last_cpu_freq for s in sats])
+        solars = np.array([s.solar_power  for s in sats])
+        xis    = np.array([s.xi           for s in sats], dtype=np.float32)
+        return np.array([
+            float(np.mean(dods))   / cfg.DOD_MAX,
+            float(np.std(dods))    / cfg.DOD_MAX,
+            float(np.max(dods))    / cfg.DOD_MAX,
+            float(np.mean(qfs))    / (cfg.Q_F_MAX + 1e-9),
+            float(np.mean(qbs))    / (cfg.Q_F_MAX + 1e-9),
+            float(np.mean(hls))    / max(cfg.HL_NORM, 1e-12),
+            float(np.mean(freqs))  / max(cfg.CPU_FREQ, 1.0),
+            float(np.mean(solars)) / max(cfg.P_SOLAR_MAX, 1e-6),
+            float(np.mean(xis)),
+            (current_slot % cfg.ORBIT_PERIOD) / max(cfg.ORBIT_PERIOD, 1),
+        ], dtype=np.float32)
