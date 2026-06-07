@@ -96,10 +96,12 @@ def main():
     eval_runs     = {p: load_eval_run(d, p) for p in POLICIES}
     learning      = load_learning_curve(d)
 
-    # ── Figure 1: 5 项指标 bar chart 对比 ──────────────────────
+    # ── Figure 1: 5 metrics bar chart ──────────────────────────
     metrics = ['completion_rate', 'avg_satisfaction_rate',
                'avg_e2e_delay', 'avg_health_loss', 'avg_dod', 'avg_queue_mb']
-    metric_labels = ['CR', '满意度', '时延(s)', 'HL/slot', '平均DoD', '队列积压(MB)']
+    metric_labels = ['Completion Rate', 'Satisfaction Rate',
+                     'E2E Delay (s)', 'Health Loss / slot',
+                     'Average DoD', 'Queue Backlog (MB)']
 
     fig, axes = plt.subplots(2, 3, figsize=(14, 8))
     for ax, m, lab in zip(axes.flat, metrics, metric_labels):
@@ -122,51 +124,57 @@ def main():
         ax.grid(alpha=0.3, axis='y')
         if m == 'avg_health_loss':
             ax.set_yscale('log')
-    plt.suptitle('λ_high=4.0 主场景下 5 策略 5 项指标对比', fontsize=14)
+    plt.suptitle('Five-metric Comparison Across 5 Policies (λ_high=4.0)',
+                 fontsize=14)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, '01_5_metrics_bar.png'), dpi=150)
     plt.close()
-    print(f'保存 01_5_metrics_bar.png')
+    print(f'saved 01_5_metrics_bar.png')
 
     # ── Figure 2: CR over time ───────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
     plot_curve(ax, curves_by_pol, 'slots', 'completion_rate',
-               '累计完成率 (CR) 随时隙演化', 'CR')
+               'Cumulative Completion Rate over Slots',
+               'Completion Rate')
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, '02_cr_curve.png'), dpi=150)
     plt.close()
-    print(f'保存 02_cr_curve.png')
+    print(f'saved 02_cr_curve.png')
 
     # ── Figure 3: DoD over time ──────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
     plot_curve(ax, curves_by_pol, 'slots', 'avg_dod',
-               '平均放电深度 (DoD) 随时隙演化', 'DoD')
-    ax.axhspan(0.20, 0.40, color='green', alpha=0.1, label='论文目标区间')
+               'Average Depth of Discharge over Slots',
+               'Average DoD')
+    ax.axhspan(0.20, 0.40, color='green', alpha=0.1,
+               label='Paper target range')
     ax.legend(loc='best', fontsize=9)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, '03_dod_curve.png'), dpi=150)
     plt.close()
-    print(f'保存 03_dod_curve.png')
+    print(f'saved 03_dod_curve.png')
 
     # ── Figure 4: HL cumulative ──────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
     plot_curve(ax, curves_by_pol, 'slots', 'cumulative_health_loss',
-               '累积健康损失 (HL) 随时隙演化', 'Cumulative HL')
+               'Cumulative Battery Health Loss over Slots',
+               'Cumulative HL')
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, '04_hl_cumulative.png'), dpi=150)
     plt.close()
-    print(f'保存 04_hl_cumulative.png')
+    print(f'saved 04_hl_cumulative.png')
 
-    # ── Figure 5: 满意度 over time ──────────────────────────────
+    # ── Figure 5: satisfaction over time ─────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
     plot_curve(ax, curves_by_pol, 'slots', 'slot_satisfaction_rate',
-               '每时隙满意度演化', 'Satisfaction rate')
+               'Per-Slot User Satisfaction Rate over Slots',
+               'Satisfaction Rate')
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, '05_satisfaction_curve.png'), dpi=150)
     plt.close()
-    print(f'保存 05_satisfaction_curve.png')
+    print(f'saved 05_satisfaction_curve.png')
 
-    # ── Figure 6: 队列积压 over time ─────────────────────────────
+    # ── Figure 6: queue backlog over time ────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
     for pol in POLICIES:
         if curves_by_pol.get(pol) is None: continue
@@ -175,7 +183,7 @@ def main():
         y = [(a + b) / 1e6 for a, b in zip(c['avg_qf_size'], c['avg_qb_size'])]
         ax.plot(x, y, label=pol, color=COLORS[pol],
                 linestyle=LINESTYLES[pol], linewidth=1.8, alpha=0.85)
-    ax.set_title('队列积压 (QF + QB) 随时隙演化')
+    ax.set_title('Queue Backlog (QF + QB) over Slots')
     ax.set_ylabel('Queue backlog (MB)')
     ax.set_xlabel('Slot')
     ax.legend(loc='best', fontsize=9)
@@ -183,9 +191,9 @@ def main():
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, '06_queue_curve.png'), dpi=150)
     plt.close()
-    print(f'保存 06_queue_curve.png')
+    print(f'saved 06_queue_curve.png')
 
-    # ── Figure 7: MAPPO 学习曲线（如有）──────────────────────────
+    # ── Figure 7: MAPPO learning curve ───────────────────────────
     if learning:
         updates = [r['update']          for r in learning]
         crs     = [r['completion_rate'] for r in learning]
@@ -194,36 +202,36 @@ def main():
 
         fig, axes = plt.subplots(1, 3, figsize=(14, 4))
         axes[0].plot(updates, crs, 'C3-o', markersize=3, linewidth=1.5)
-        axes[0].set_title('MAPPO 训练 CR 演化')
-        axes[0].set_xlabel('PPO Update'); axes[0].set_ylabel('CR')
+        axes[0].set_title('MAPPO Training CR')
+        axes[0].set_xlabel('PPO Update'); axes[0].set_ylabel('Completion Rate')
         axes[0].grid(alpha=0.3)
 
         axes[1].plot(updates, dods, 'C2-o', markersize=3, linewidth=1.5)
-        axes[1].set_title('MAPPO 训练 DoD 演化')
-        axes[1].set_xlabel('PPO Update'); axes[1].set_ylabel('DoD')
+        axes[1].set_title('MAPPO Training DoD')
+        axes[1].set_xlabel('PPO Update'); axes[1].set_ylabel('Average DoD')
         axes[1].axhspan(0.20, 0.40, color='green', alpha=0.1)
         axes[1].grid(alpha=0.3)
 
         axes[2].plot(updates, hls, 'C0-o', markersize=3, linewidth=1.5)
-        axes[2].set_title('MAPPO 训练 HL 演化')
-        axes[2].set_xlabel('PPO Update'); axes[2].set_ylabel('HL/slot')
+        axes[2].set_title('MAPPO Training Health Loss')
+        axes[2].set_xlabel('PPO Update'); axes[2].set_ylabel('HL / slot')
         axes[2].set_yscale('log')
         axes[2].grid(alpha=0.3)
 
         plt.tight_layout()
-        plt.savefig(os.path.join(out_dir, '07_mappo_learning_curve.png'), dpi=150)
+        plt.savefig(os.path.join(out_dir, '07_mappo_learning_curve.png'),
+                    dpi=150)
         plt.close()
-        print(f'保存 07_mappo_learning_curve.png')
+        print(f'saved 07_mappo_learning_curve.png')
 
-    # ── Figure 8: 5 项指标 radar/spider chart ────────────────────
-    # 归一化每个指标（越大越好的归一化为 v/max；越小越好的归一化为 min/v）
+    # ── Figure 8: radar/spider chart ─────────────────────────────
     metrics_norm = {
-        'CR':         ('completion_rate',         'max_better'),
-        '满意度':     ('avg_satisfaction_rate',   'max_better'),
-        '时延倒数':   ('avg_e2e_delay',           'min_better'),
-        'HL 倒数':    ('avg_health_loss',         'min_better'),
-        '队列倒数':   ('avg_queue_mb',            'min_better'),
-        'DoD 接近目标': ('avg_dod',               'target_0.3'),
+        'CR':              ('completion_rate',         'max_better'),
+        'Satisfaction':    ('avg_satisfaction_rate',   'max_better'),
+        '1/Delay':         ('avg_e2e_delay',           'min_better'),
+        '1/HL':            ('avg_health_loss',         'min_better'),
+        '1/Queue':         ('avg_queue_mb',            'min_better'),
+        'DoD near 0.3':    ('avg_dod',                 'target_0.3'),
     }
     raw = {m: [eval_runs[p].get(k, 0) for p in POLICIES if eval_runs.get(p)]
            for m, (k, _) in metrics_norm.items()}
@@ -235,7 +243,6 @@ def main():
         elif mode == 'min_better':
             norm[m] = vals.min() / np.maximum(vals, 1e-12)
         elif mode == 'target_0.3':
-            # 越接近 0.3 分越高
             d = np.abs(vals - 0.3)
             norm[m] = 1.0 - d / max(d.max(), 1e-12)
 
@@ -252,15 +259,15 @@ def main():
     ax.set_xticks(angles[:-1])
     ax.set_xticklabels(labels, fontsize=10)
     ax.set_ylim(0, 1.05)
-    ax.set_title('5 策略综合性能雷达图 (归一化, 越大越好)',
+    ax.set_title('Overall Performance Radar (normalized, larger is better)',
                  fontsize=12, fontweight='bold', pad=20)
     ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0), fontsize=9)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, '08_radar_overall.png'), dpi=150)
     plt.close()
-    print(f'保存 08_radar_overall.png')
+    print(f'saved 08_radar_overall.png')
 
-    print(f'\n所有图保存至: {out_dir}')
+    print(f'\nall figures saved to: {out_dir}')
 
 
 if __name__ == '__main__':
