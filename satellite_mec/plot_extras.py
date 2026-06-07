@@ -83,21 +83,26 @@ def main():
     out_dir = args.out_dir or os.path.join(d, 'figures_final')
     os.makedirs(out_dir, exist_ok=True)
 
-    # ── Figure 11: System delay overhead PDF (Little's law conversion) ──
-    # 把每时隙 avg queue (Mbit/sat) 转成 sojourn time (秒)：
-    #   W = (Q_bits / S_avg_bits) / λ_per_sat_per_slot · TAU
-    # 这是"如果当前队列稳态、按到达率排空所需时间"，即系统延迟开销
+    # ── Figure 11: System delay overhead PDF (constellation-wide) ──
+    # CSV 的 total_queue_size 是每星均值。25 颗星整体延迟开销：
+    #   L_sys (tasks)  = N_SATS · Q_per_sat / S_avg
+    #   λ_sys (tasks/s)= N_SATS · λ_per_sat
+    #   W_per_task     = L_sys / λ_sys = Q_per_sat / S_avg / λ_per_sat  (与单星同)
+    #   系统总开销     = L_sys · W_per_task = N_SATS · (Q_per_sat/S_avg) · W_per_task
+    # 等效写法：N_SATS × per-sat sojourn time，单位 "task-seconds"
     S_AVG_MBIT = 30.0           # (S_MIN+S_MAX)/2 = (10+50)/2 Mbit
-    LAMBDA_PER_SAT = 0.880       # = LAMBDA_HIGH·1/5 + LAMBDA_LOW·4/5 at λ_high=4
+    LAMBDA_PER_SAT = 0.880       # 高/低混合到达率
     TAU = 1.0
+    N_SATS = 25
     fig, ax = plt.subplots(figsize=(8, 5.5))
     all_samples = {}
     for pol in POLICIES:
-        q_mbit = load_slot_csv(d, pol, 'total_queue_size', scale=1.0 / 1e6)
-        # tasks per sat = Q (Mbit) / S_avg (Mbit/task)
-        # delay (s) = tasks / λ (tasks/s) · τ
-        delay_s = (q_mbit / S_AVG_MBIT) / LAMBDA_PER_SAT * TAU
-        all_samples[pol] = delay_s
+        q_mbit_per_sat = load_slot_csv(d, pol, 'total_queue_size', scale=1.0 / 1e6)
+        per_sat_W = (q_mbit_per_sat / S_AVG_MBIT) / LAMBDA_PER_SAT * TAU  # s
+        # 25 颗卫星整体：L_sys · W = N_SATS · (Q/S_avg) · W = task-seconds backlog
+        L_sys_tasks = N_SATS * q_mbit_per_sat / S_AVG_MBIT
+        sys_overhead = L_sys_tasks * per_sat_W                            # task·s
+        all_samples[pol] = sys_overhead
     lo = min(s.min() for s in all_samples.values())
     hi = max(s.max() for s in all_samples.values())
     margin = (hi - lo) * 0.05
@@ -105,7 +110,7 @@ def main():
     for pol in POLICIES:
         kde_with_markers(ax, all_samples[pol], x_range,
                          label=pol, color=COLORS[pol], marker=MARKERS[pol])
-    ax.set_xlabel('System delay overhead (s)', fontsize=12)
+    ax.set_xlabel('System delay overhead (task·s, 25 satellites)', fontsize=12)
     ax.set_ylabel('Distribution', fontsize=12)
     ax.grid(alpha=0.4, linestyle='--')
     ax.legend(loc='upper right', fontsize=10, ncol=2, frameon=True)
