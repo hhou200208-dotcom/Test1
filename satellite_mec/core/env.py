@@ -243,6 +243,8 @@ class SatelliteMECEnv(EnvInterface):
             'avg_health_loss':   stats.get('avg_health_loss', 0.0),
             'avg_delta_l_comp':  stats.get('avg_delta_l_comp', 0.0),
             'avg_delta_l_trans': stats.get('avg_delta_l_trans', 0.0),
+            'avg_cpu_freq':      stats.get('avg_cpu_freq', 0.0),
+            'max_cpu_freq':      stats.get('max_cpu_freq', 0.0),
             'total_queue_size':  stats['avg_qf_size'] + stats['avg_qb_size'],
             'per_sat_dod':      [sat.dod for sat in self.constellation.satellites],
             'episode_arrived':   self.episode_arrived,

@@ -73,16 +73,34 @@ class LyapunovCalculator:
         return (10 ** (a * (dod - 1))) * (1.0 + a * math.log(10) * dod)
 
     # ── DoD 增量估算 ──────────────────────────────────────────
-    def delta_dod_comp(self, task: "Task", nb_next: int) -> float:
-        """估算执行一个任务产生的 DoD 增量（用于决策排序）。
+    def delta_dod_comp(self, task: "Task", sat_state: Dict) -> float:
+        """DVFS-aware 边际 DoD：接纳一个任务前后整星 slot 能耗的差分。
 
-        Li-style 整星 DVFS 下，单任务无清晰闭式能耗；这里取**上界估计**
-        E_ceil = κ · F_CMP_MAX² · S · H（任务独占 CPU、运行在 f_max 时的能耗）。
-        nb_next 参数保留是为了兼容旧 API，但不再参与能耗公式。
+        与"独占 f_max 上界"不同，这里调用 select_freq 计算 f_before / f_after：
+            f_before = sqrt(Q_hat / (3 V κ))  ∨ floor_hat
+            f_after  = sqrt((Q_hat + S·H) / (3 V κ))  ∨ max(floor_hat, new_floor)
+        然后 Δ E = κ · (f_after³ − f_before³) · τ。
+
+        sat_state 必须含 q_cycles_hat、f_floor_hat、nb_hat（由 Satellite 在
+        init_temp_state 与 apply_action 中维护）。
         """
+        from core.dvfs import select_freq
         cfg = self.cfg
-        energy = cfg.KAPPA * task.size * task.cpu_cycles * (cfg.CPU_FREQ ** 2)
-        return energy / cfg.E_CAP
+
+        q_before     = float(sat_state.get('q_cycles_hat', 0.0))
+        floor_before = float(sat_state.get('f_floor_hat', 0.0))
+        nb_next      = int(sat_state.get('nb_hat', 0)) + 1
+
+        task_cycles    = task.size * task.cpu_cycles
+        q_after        = q_before + task_cycles
+        new_floor_task = nb_next * task_cycles / max(task.deadline, cfg.TAU)
+        floor_after    = max(floor_before, new_floor_task)
+
+        f_before = select_freq(cfg, q_before, f_floor=floor_before)
+        f_after  = select_freq(cfg, q_after,  f_floor=floor_after)
+
+        delta_e = cfg.KAPPA * cfg.TAU * max(f_after ** 3 - f_before ** 3, 0.0)
+        return delta_e / cfg.E_CAP
 
     def delta_dod_trans(self, task: "Task", b_nm: float) -> float:
         """转发一个任务（链路速率 b_nm）产生的 DoD 增量。"""
@@ -91,9 +109,9 @@ class LyapunovCalculator:
             return 0.0
         return cfg.P_T * (task.size / b_nm) / cfg.E_CAP
 
-    def delta_health_loss_comp(self, task: "Task", nb_next: int, dod: float) -> float:
+    def delta_health_loss_comp(self, task: "Task", sat_state: Dict, dod: float) -> float:
         """计算任务引起的健康损失增量（计算部分）。"""
-        return self.health_loss_deriv(dod) * self.delta_dod_comp(task, nb_next)
+        return self.health_loss_deriv(dod) * self.delta_dod_comp(task, sat_state)
 
     def delta_health_loss_trans(self, task: "Task", b_nm: float, dod: float) -> float:
         """计算任务引起的健康损失增量（传输部分）。"""
@@ -126,11 +144,11 @@ class LyapunovCalculator:
         queue_item = base_queue * (nb_hat - tilde_N_F) + base_queue * urgency
         loss_item = 0.0
         if self.use_battery_loss:
-            delta_l = self.delta_health_loss_comp(task, nb_next, dod)
+            delta_l = self.delta_health_loss_comp(task, sat_state, dod)
             loss_item = (cfg.V / (1 + cfg.V)) * delta_l / (cfg.L_MAX_NEW_RAW + 1e-9)
         dod_item = 0.0
         if self.use_dod_penalty:
-            delta_dod = self.delta_dod_comp(task, nb_next)
+            delta_dod = self.delta_dod_comp(task, sat_state)
             dod_item = cfg.ETA * z_hat * delta_dod / (cfg.Z_MAX * cfg.DELTA_DOD_MAX + 1e-9)
         return queue_item + loss_item + dod_item
 
@@ -173,13 +191,19 @@ class LyapunovCalculator:
 
     # ── 状态提取辅助 ──────────────────────────────────────────
     def get_sat_state(self, satellite: "Satellite") -> Dict:
-        """从卫星对象提取用于代价计算的状态字典。"""
+        """从卫星对象提取用于代价计算的状态字典。
+
+        q_cycles_hat / f_floor_hat 是本时隙累积的 DVFS 输入估计（含本时隙
+        已接纳的新任务），用于 delta_dod_comp 做差分。
+        """
         return {
-            'dod':     satellite.dod,
-            'n_f':     len(satellite.forward_queue),
-            'qf_size': satellite.qf_size,
-            'nb_hat':  satellite.nb_hat,
-            'z_hat':   satellite.z_hat,
+            'dod':          satellite.dod,
+            'n_f':          len(satellite.forward_queue),
+            'qf_size':      satellite.qf_size,
+            'nb_hat':       satellite.nb_hat,
+            'z_hat':        satellite.z_hat,
+            'q_cycles_hat': satellite.q_cycles_hat,
+            'f_floor_hat':  satellite.f_floor_hat,
         }
 
     def get_neighbor_state(self, neighbor_info: Dict) -> Dict:

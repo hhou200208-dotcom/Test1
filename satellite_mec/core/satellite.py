@@ -89,6 +89,10 @@ class Satellite:
         self._comp_energy:      float                     = 0.0
         self._trans_energy:     float                     = 0.0
         self._slot_f_cmp:       float                     = 0.0
+        self.last_cpu_freq:     float                     = 0.0   # 上一时隙实际使用的 f_cmp（诊断用）
+        self.last_f_floor:      float                     = 0.0   # 上一时隙 deadline floor
+        self.q_cycles_hat:      float                     = 0.0   # 本时隙累积 backlog 估计（含已接纳）
+        self.f_floor_hat:       float                     = 0.0   # 本时隙累积 floor 估计
         self.slot_health_loss:  float                     = 0.0
         self.slot_delta_l_comp: float                     = 0.0
         self.slot_delta_l_trans: float                    = 0.0
@@ -123,6 +127,10 @@ class Satellite:
         self._comp_energy  = 0.0
         self._trans_energy = 0.0
         self._slot_f_cmp   = 0.0
+        self.last_cpu_freq = 0.0
+        self.last_f_floor  = 0.0
+        self.q_cycles_hat  = 0.0
+        self.f_floor_hat   = 0.0
         self.slot_health_loss   = 0.0
         self.slot_delta_l_comp  = 0.0
         self.slot_delta_l_trans = 0.0
@@ -145,6 +153,10 @@ class Satellite:
         self.nb_hat = max(self.nb - self.last_done_count, 0)
         self.z_hat  = self.z
         self.alpha_num = 0
+        # DVFS 边际能耗估计的累积状态：以当前 compute_queue 为基线
+        self.q_cycles_hat = sum(t.get_remaining_size() * t.cpu_cycles
+                                for t in self.compute_queue)
+        self.f_floor_hat  = self.last_f_floor
         self._comp_energy    = 0.0
         self._trans_energy   = 0.0
         self._slot_f_cmp     = 0.0
@@ -366,9 +378,16 @@ class Satellite:
         if action == 0:  # 本地计算
             nb_next = self.nb_hat + 1
             cost = lyapunov_calc.normalized_local_cost(task, sat_state, nb_next, current_slot)
+            # 用更新前的 sat_state 计算 delta_dod_comp，再推进 hat
+            delta_dod_local = lyapunov_calc.delta_dod_comp(task, sat_state)
             self.nb_hat    += 1
-            self.z_hat     += lyapunov_calc.delta_dod_comp(task, nb_next)
+            self.z_hat     += delta_dod_local
             self.alpha_num += 1
+            # 推进 DVFS 累积估计（供同时隙后续任务的差分使用）
+            task_cycles = task.size * task.cpu_cycles
+            self.q_cycles_hat += task_cycles
+            new_floor_task = nb_next * task_cycles / max(task.deadline, self.cfg.TAU)
+            self.f_floor_hat = max(self.f_floor_hat, new_floor_task)
             if nb_next > 0:
                 # Li-style DVFS：单任务能耗无闭式，记录上界估计供监控用
                 self._comp_energy += (self.cfg.KAPPA * task.size * task.cpu_cycles
@@ -435,6 +454,8 @@ class Satellite:
 
         if self.nb == 0:
             self._slot_f_cmp     = 0.0
+            self.last_cpu_freq   = 0.0
+            self.last_f_floor    = 0.0
             self.last_done_count = 0
             return done_tasks, timeout_tasks
 
@@ -442,7 +463,9 @@ class Satellite:
         q_cycles = sum(t.get_remaining_size() * t.cpu_cycles for t in self.compute_queue)
         f_floor  = dvfs_deadline_floor(cfg, self.compute_queue, current_slot)
         f_cmp    = dvfs_select_freq(cfg, q_cycles, f_floor=f_floor)
-        self._slot_f_cmp = f_cmp
+        self._slot_f_cmp   = f_cmp
+        self.last_cpu_freq = f_cmp
+        self.last_f_floor  = f_floor
 
         # 第三步：平分 cycle 预算推进任务
         cycles_per_task = f_cmp * cfg.TAU / self.nb if self.nb > 0 else 0.0

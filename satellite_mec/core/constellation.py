@@ -247,6 +247,7 @@ class Constellation:
         qf_sizes = np.array([sat.qf_size for sat in self.satellites])
         qb_sizes = np.array([sat.qb_size for sat in self.satellites])
         zs       = np.array([sat.z       for sat in self.satellites])
+        freqs    = np.array([sat.last_cpu_freq for sat in self.satellites])
         stats    = {
             'avg_dod':     float(np.mean(dods)),
             'max_dod':     float(np.max(dods)),
@@ -255,6 +256,8 @@ class Constellation:
             'avg_qb_size': float(np.mean(qb_sizes)),
             'avg_z':       float(np.mean(zs)),
             'max_z':       float(np.max(zs)),
+            'avg_cpu_freq': float(np.mean(freqs)),
+            'max_cpu_freq': float(np.max(freqs)),
         }
         stats.update(self.get_health_stats())
         return stats

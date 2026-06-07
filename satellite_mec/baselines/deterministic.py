@@ -168,9 +168,15 @@ class LyapunovGreedyPolicy(PolicyInterface):
 
                 # 同步更新 sat 的临时状态（与 apply_action 保持一致）
                 if best_action == 0:
+                    pre_state = self.lyapunov_calc.get_sat_state(sat)
+                    delta_dod_local = self.lyapunov_calc.delta_dod_comp(task, pre_state)
                     sat.nb_hat    += 1
-                    sat.z_hat     += self.lyapunov_calc.delta_dod_comp(task, sat.nb_hat)
+                    sat.z_hat     += delta_dod_local
                     sat.alpha_num += 1
+                    task_cycles = task.size * task.cpu_cycles
+                    sat.q_cycles_hat += task_cycles
+                    new_floor_task = sat.nb_hat * task_cycles / max(task.deadline, self.cfg.TAU)
+                    sat.f_floor_hat  = max(sat.f_floor_hat, new_floor_task)
                 else:
                     neighbor_id = sat.neighbors[best_action - 1]
                     b_nm = sat.link_rates[neighbor_id]
