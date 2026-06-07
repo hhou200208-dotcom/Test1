@@ -76,6 +76,9 @@ class MetricsRecorder(MetricsInterface):
             'slot_satisfaction_rate_orig': info.get('slot_satisfaction_rate_orig', 0.0),
             '_per_sat_dod':     info.get('per_sat_dod', []),
             '_slot_e2e_delays': info.get('slot_e2e_delays', []),
+            '_slot_done_deadlines':    info.get('slot_done_deadlines', []),
+            '_slot_timeout_deadlines': info.get('slot_timeout_deadlines', []),
+            '_slot_satisfaction_rate': info.get('slot_satisfaction_rate', 0.0),
             '_reward_ledger':   info.get('reward_ledger', {}),
         }
         self._slot_records.append(r)

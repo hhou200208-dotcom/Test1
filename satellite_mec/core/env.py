@@ -198,6 +198,8 @@ class SatelliteMECEnv(EnvInterface):
         slot_done       = 0
         slot_satisfied  = 0
         slot_e2e_delays: List[float] = []
+        slot_done_deadlines: List[float] = []          # 完成任务的 ddl，用于 slack ratio
+        slot_timeout_deadlines: List[float] = []       # 超时任务的 ddl，用于"全任务"延迟 PDF
         nb_start_map    = {sat.sat_id: sat.nb for sat in sats}
         done_per_sat    = {n: 0 for n in range(cfg.N_SATS)}
         timeout_per_sat = {n: 0 for n in range(cfg.N_SATS)}
@@ -210,9 +212,12 @@ class SatelliteMECEnv(EnvInterface):
             if compute_timeout:
                 self.episode_timeout += len(compute_timeout)
                 timeout_per_sat[sat.sat_id] += len(compute_timeout)
+                # 记录超时任务的 deadline，供 "all admitted" 延迟 PDF 使用
+                slot_timeout_deadlines.extend(t.deadline for t in compute_timeout)
             for task in done_tasks:
                 real_delay = (task.finish_slot - task.arrive_slot) * cfg.TAU
                 slot_e2e_delays.append(real_delay)
+                slot_done_deadlines.append(task.deadline)
                 if real_delay <= task.deadline:
                     slot_satisfied += 1
                     satisfied_per_sat[sat.sat_id] += 1
@@ -298,6 +303,8 @@ class SatelliteMECEnv(EnvInterface):
             'slot_satisfaction_rate':   slot_satisfaction_rate,
             'slot_satisfaction_rate_orig': slot_satisfaction_orig,
             'slot_e2e_delays':          slot_e2e_delays,
+            'slot_done_deadlines':      slot_done_deadlines,
+            'slot_timeout_deadlines':   slot_timeout_deadlines,
         }
         if self.phase == 'eval':
             self.eval_arrived            += slot_arrived
