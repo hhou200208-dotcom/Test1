@@ -272,22 +272,31 @@ class Satellite:
     def get_state(self, task: "Task", current_slot: int,
                   neighbor_info: Dict) -> np.ndarray:
         """
-        构建 Actor 输入的观测向量（32维）。
+        构建 Actor 输入的观测向量（54 维）。
 
-        Returns
-        -------
-        np.ndarray : shape=(state_dim,) = (32,)
-            [id(1) | local(6) | neighbors(4×5) | task(5)]
+        Layout
+        ------
+            id(1)
+          + local(10): qf, qb, nb_hat, dod, z_hat, xi, tau_switch,
+                       last_cpu_freq, solar_norm, dod_headroom
+          + neighbor(4×9): link_rate, prop_delay, qf, qb, nb, dod, xi,
+                           tau_switch, last_cpu_freq
+          + task(7): size, cycles, hops, trans_delay, remain,
+                     slack_ratio, cycle_rate_need
         """
         cfg       = self.cfg
         id_feat   = np.array([self.sat_id / max(cfg.N_SATS - 1, 1)], dtype=np.float32)
         local_state = np.array([
             self.qf_size / (cfg.Q_F_MAX + 1e-9),
+            self.qb_size / (cfg.Q_F_MAX + 1e-9),
             self.nb_hat  / max(cfg.MAX_DISPATCH, 1),
             self.dod     / cfg.DOD_MAX,
             self.z_hat   / max(cfg.Z_MAX, 1e-9),
             float(self.xi),
             self.tau_switch / cfg.ORBIT_PERIOD,
+            self.last_cpu_freq / max(cfg.CPU_FREQ, 1.0),
+            self.solar_power   / max(cfg.P_SOLAR_MAX, 1e-6),
+            max(cfg.DOD_MAX - self.dod, 0.0) / cfg.DOD_MAX,
         ], dtype=np.float32)
         neighbor_state = []
         max_prop = cfg.ORBIT_RADIUS / cfg.SPEED_OF_LIGHT
@@ -297,61 +306,74 @@ class Satellite:
                 self.link_rates.get(neighbor_id, cfg.B_AVG) / cfg.B_MAX,
                 self.prop_delays.get(neighbor_id, 0.0) / max(max_prop, 1e-9),
                 (info.get('qf_size', 0.0) - cfg.THETA) / (cfg.Q_F_MAX + 1e-9),
+                info.get('qb_size', 0.0) / (cfg.Q_F_MAX + 1e-9),
                 info.get('nb', 0) / max(cfg.MAX_DISPATCH, 1),
                 info.get('dod', 0.0) / cfg.DOD_MAX,
                 float(info.get('xi', 1)),
+                info.get('tau_switch', 0) / cfg.ORBIT_PERIOD,
+                info.get('last_cpu_freq', 0.0) / max(cfg.CPU_FREQ, 1.0),
             ])
         remain = max(task.remain_time(current_slot), 0.0)
+        # slack_ratio: 剩余时间 / 估算计算耗时 (>1 表示有余裕，<1 表示赶不上)
+        est_comp_time = task.size * task.cpu_cycles / max(cfg.CPU_FREQ, 1.0)
+        slack_ratio = remain / max(est_comp_time, 1e-3)
+        # cycle_rate_need: 完成所需的最低频率 / f_max
+        cycle_rate_need = (task.size * task.cpu_cycles / max(remain, 1e-3)) / max(cfg.CPU_FREQ, 1.0)
         task_state = np.array([
             task.size / cfg.S_MAX, task.cpu_cycles / cfg.H_MAX,
             task.hops / max(cfg.K_MAX, 1), task.trans_delay_acc / cfg.D_MAX_MAX,
             remain / cfg.D_MAX_MAX,
+            min(slack_ratio, 10.0) / 10.0,
+            min(cycle_rate_need, 1.0),
         ], dtype=np.float32)
         return np.concatenate([id_feat, local_state,
                                np.array(neighbor_state, dtype=np.float32), task_state])
 
     def get_critic_state(self, neighbor_info: Dict, current_slot: int) -> np.ndarray:
-        """
-        构建 MAPPO Critic 输入的全局观测向量（135维）。
-
-        Returns
-        -------
-        np.ndarray : shape=(critic_state_dim,) = (135,)
-        """
-        own_state = self._get_node_state_28()
+        """构建 Critic 输入的拼接观测向量（每节点 47 维 × 5 节点 = 235 维）。"""
+        own_state = self._get_node_state_47()
         neighbor_states = [
-            self._get_neighbor_node_state_28(nid, neighbor_info.get(nid, {}))
+            self._get_neighbor_node_state_47(nid, neighbor_info.get(nid, {}))
             for nid in self.neighbors
         ]
         return np.concatenate([own_state] + neighbor_states)
 
-    def _get_node_state_28(self) -> np.ndarray:
+    def _get_node_state_47(self) -> np.ndarray:
+        """每节点 critic 子向量（与 Actor 的 (id + own + neighbor) 子集对齐，去掉 task）。"""
         cfg = self.cfg
         id_feat = np.array([self.sat_id / max(cfg.N_SATS - 1, 1)], dtype=np.float32)
         local_state = np.array([
             self.qf_size / (cfg.Q_F_MAX + 1e-9),
+            self.qb_size / (cfg.Q_F_MAX + 1e-9),
             self.nb_hat  / max(cfg.MAX_DISPATCH, 1),
             self.dod     / cfg.DOD_MAX,
             self.z_hat   / max(cfg.Z_MAX, 1e-9),
             float(self.xi),
             self.tau_switch / cfg.ORBIT_PERIOD,
+            self.last_cpu_freq / max(cfg.CPU_FREQ, 1.0),
+            self.solar_power   / max(cfg.P_SOLAR_MAX, 1e-6),
+            max(cfg.DOD_MAX - self.dod, 0.0) / cfg.DOD_MAX,
         ], dtype=np.float32)
         return np.concatenate([id_feat, local_state,
-                               np.zeros(cfg.N_NEIGHBORS * 6, dtype=np.float32)])
+                               np.zeros(cfg.N_NEIGHBORS * 9, dtype=np.float32)])
 
-    def _get_neighbor_node_state_28(self, neighbor_id: int, info: Dict) -> np.ndarray:
+    def _get_neighbor_node_state_47(self, neighbor_id: int, info: Dict) -> np.ndarray:
         cfg = self.cfg
         id_feat = np.array([neighbor_id / max(cfg.N_SATS - 1, 1)], dtype=np.float32)
         local_state = np.array([
             info.get('qf_size', 0.0) / (cfg.Q_F_MAX + 1e-9),
+            info.get('qb_size', 0.0) / (cfg.Q_F_MAX + 1e-9),
             info.get('nb', 0) / max(cfg.MAX_DISPATCH, 1),
             info.get('dod', 0.0) / cfg.DOD_MAX,
             0.0,
             float(info.get('xi', 1)),
             info.get('tau_switch', 0) / cfg.ORBIT_PERIOD,
+            info.get('last_cpu_freq', 0.0) / max(cfg.CPU_FREQ, 1.0),
+            info.get('solar_power', 0.0) / max(cfg.P_SOLAR_MAX, 1e-6),
+            max(cfg.DOD_MAX - info.get('dod', 0.0), 0.0) / cfg.DOD_MAX,
         ], dtype=np.float32)
         return np.concatenate([id_feat, local_state,
-                               np.zeros(cfg.N_NEIGHBORS * 6, dtype=np.float32)])
+                               np.zeros(cfg.N_NEIGHBORS * 9, dtype=np.float32)])
 
     def apply_action(self, task: "Task", action: int, current_slot: int,
                      neighbor_info: Dict,
@@ -533,12 +555,15 @@ class Satellite:
     def get_info(self) -> Dict:
         """返回供邻居卫星参考的精简状态字典。"""
         return {
-            'qf_size':    self.qf_size,
-            'n_f':        len(self.forward_queue),
-            'nb':         self.nb,
-            'dod':        self.dod,
-            'xi':         self.xi,
-            'tau_switch': self.tau_switch,
+            'qf_size':       self.qf_size,
+            'qb_size':       self.qb_size,
+            'n_f':           len(self.forward_queue),
+            'nb':            self.nb,
+            'dod':           self.dod,
+            'xi':            self.xi,
+            'tau_switch':    self.tau_switch,
+            'last_cpu_freq': self.last_cpu_freq,
+            'solar_power':   self.solar_power,
         }
 
     def _remove_from_forward_queue(self, task: "Task") -> None:

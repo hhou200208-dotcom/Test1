@@ -96,12 +96,7 @@ class MAPPOPolicy(PolicyInterface):
         obs:   Dict[int, List[np.ndarray]],
         masks: Dict[int, List[np.ndarray]],
     ) -> Dict[int, List[int]]:
-        """
-        对所有卫星的 forward_queue 中的任务执行动作推断。
-
-        训练模式下额外缓存 (state, action, log_prob, mask)，
-        供 store_slot_data() 写入缓冲区。
-        """
+        """Batch 接口（保留兼容 baseline 用，但 MAPPO 训练走 act_one）。"""
         actions = {}
         self._slot_inference = {}
         for n in range(self.cfg.N_SATS):
@@ -118,6 +113,33 @@ class MAPPOPolicy(PolicyInterface):
             actions[n] = sat_actions
             self._slot_inference[n] = sat_inference
         return actions
+
+    def act_one(
+        self,
+        state: np.ndarray,
+        mask:  np.ndarray,
+    ) -> Tuple[int, float]:
+        """单任务决策（sequential 路径调用）。返回 (action, log_prob)。"""
+        state_t = torch.FloatTensor(state).to(self.trainer.device)
+        mask_t  = torch.FloatTensor(mask).to(self.trainer.device)
+        action, log_prob, _ = self.actor.get_action(
+            state_t, mask_t, deterministic=self._eval_mode)
+        return action, log_prob
+
+    def record_task_transition(
+        self,
+        sat_id:      int,
+        slot_t:      int,
+        state:       np.ndarray,
+        action:      int,
+        log_prob:    float,
+        mask:        np.ndarray,
+        task_reward: float = 0.0,
+    ) -> None:
+        """sequential 路径：env.step 在 apply_action 后调用，写入 buffer。"""
+        if self._eval_mode:
+            return
+        self.buffer.add_task(sat_id, slot_t, state, action, log_prob, mask)
 
     def set_eval_mode(self) -> None:
         """切换到评估模式（确定性贪婪，不收集经验）。"""

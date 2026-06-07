@@ -82,9 +82,18 @@ class Config:
     ALPHA_BAR_INIT: float = MAX_DISPATCH / 2.0
     COMPLETION_BONUS: float = 1.0                       # 任务完成奖励（直接激励CR）
 
+    # ── Outcome-aware reward 权重（MAPPO 训练用，对 baseline 透明） ──
+    W_DONE:    float = 1.0                              # 每完成 1 个任务的奖励
+    W_TIMEOUT: float = 2.0                              # 每超时 1 个任务的惩罚
+    W_REJECT:  float = 2.0                              # 每拒收 1 个任务的惩罚
+    W_HL:      float = 30.0                             # 健康损失惩罚权重
+    W_QUEUE:   float = 0.1                              # 队列压力惩罚权重
+    HL_NORM:   float = 1e-4                             # HL 归一化（典型 slot 量级）
+    QUEUE_NORM: float = 0.0                             # 队列归一化（运行时填充为 Q_F_MAX）
+
     # ── MAPPO 参数 ────────────────────────────────────────────
     GAMMA: float = 0.99
-    LAMBDA_GAE: float = 0.9
+    LAMBDA_GAE: float = 0.95                            # GAE 长视野（HL 是累积量）
     EPSILON: float = 0.2                                # PPO clip ratio
     BETA: float = 0.15                                  # 熵正则系数（防止早期收敛，改善DoD探索）
     LR_ACTOR: float = 1e-4
@@ -160,6 +169,9 @@ class Config:
         self.L_MAX_NEW_RAW: float = l_prime_max * delta_dod_max_comp
         self.Q_NORM: float = self.S_MAX * self.THETA_NUM
 
+        # QUEUE_NORM 默认 Q_F_MAX，保留 0.0 时按 Q_F_MAX 兜底
+        if self.QUEUE_NORM <= 0.0:
+            self.QUEUE_NORM = self.Q_F_MAX
         print(f"[Config] LAMBDA_MAX={self.LAMBDA_MAX:.0f}, "
               f"THETA_NUM={self.THETA_NUM:.0f}, "
               f"L_MAX_NEW_RAW={self.L_MAX_NEW_RAW:.4e}, "
@@ -167,12 +179,20 @@ class Config:
 
     # ── 维度查询 ──────────────────────────────────────────────
     def get_state_dim(self) -> int:
-        """Actor 输入维度：1(id) + 6(local) + N_nbr*6(neighbor+xi) + 5(task) = 36"""
-        return 1 + 6 + self.N_NEIGHBORS * 6 + 5
+        """Actor 输入维度：1(id) + 10(local) + N_nbr*9(neighbor) + 7(task) = 54
+
+        local (10): qf, qb, nb_hat, dod, z_hat, xi, tau_switch,
+                    last_cpu_freq, solar_norm, dod_headroom
+        neighbor (9): link_rate, prop_delay, qf, qb, nb, dod, xi,
+                      tau_switch, last_cpu_freq
+        task (7): size, cycles, hops, trans_delay, remain,
+                  slack_ratio, cycle_rate_need
+        """
+        return 1 + 10 + self.N_NEIGHBORS * 9 + 7
 
     def get_critic_state_dim(self) -> int:
-        """Critic 输入维度：(state_dim - 5) * (1 + N_nbr) = 155"""
-        return (self.get_state_dim() - 5) * (1 + self.N_NEIGHBORS)
+        """Critic 输入维度：(state_dim - task_dim) * (1 + N_nbr) = 47*5 = 235"""
+        return (self.get_state_dim() - 7) * (1 + self.N_NEIGHBORS)
 
     def get_action_dim(self) -> int:
         """动作空间大小：1(本地) + N_neighbors(转发) = 5"""

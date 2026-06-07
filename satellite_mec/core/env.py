@@ -115,12 +115,15 @@ class SatelliteMECEnv(EnvInterface):
         slot_arrived  = sum(len(v) for v in tasks_by_sat.values())
         self.episode_arrived += slot_arrived
         rejected_count = 0
+        rejected_per_sat = {n: 0 for n in range(cfg.N_SATS)}
         for sat in sats:
             for task in tasks_by_sat.get(sat.sat_id, []):
                 if not sat.admit_task(task):
                     rejected_count += 1
+                    rejected_per_sat[sat.sat_id] += 1
 
         # 3. 策略分支：policy 对象 or 预计算 actions
+        sequential = (policy is not None and hasattr(policy, 'act_one'))
         if policy is not None:
             for sat in sats:
                 sat.init_temp_state()
@@ -129,14 +132,15 @@ class SatelliteMECEnv(EnvInterface):
                 sat.sort_forward_queue(t)
             if hasattr(policy, 'collect_critic_values'):
                 policy.collect_critic_values(self)
-            obs     = self.get_observations()
-            masks   = self.get_action_masks()
-            actions = policy.get_actions(obs, masks)
+            if not sequential:
+                obs     = self.get_observations()
+                masks   = self.get_action_masks()
+                actions = policy.get_actions(obs, masks)
 
         if actions is None:
             actions = {}
 
-        # 4. 执行动作
+        # 4. 执行动作（sequential：每个 task 决策时构造最新 state；batch：用预计算 actions）
         next_obs   = {n: [] for n in range(cfg.N_SATS)}
         rewards    = {n: 0.0 for n in range(cfg.N_SATS)}
         n_executed = {n: 0   for n in range(cfg.N_SATS)}
@@ -149,9 +153,7 @@ class SatelliteMECEnv(EnvInterface):
                 sat.init_temp_state()
                 slot_timeout = sat.remove_timeout_tasks(t)
                 sat.sort_forward_queue(t)
-            else:
-                slot_timeout = []
-            self.episode_timeout += len(slot_timeout)
+                self.episode_timeout += len(slot_timeout)
 
             sat_actions     = actions.get(n, [])
             task_action_idx = 0
@@ -165,11 +167,15 @@ class SatelliteMECEnv(EnvInterface):
                 state = sat.get_state(task, t, neighbor_info)
                 next_obs[n].append(state)
 
-                if task_action_idx < len(sat_actions):
+                if sequential:
+                    action, log_prob = policy.act_one(state, mask)
+                elif task_action_idx < len(sat_actions):
                     action = sat_actions[task_action_idx]; task_action_idx += 1
+                    log_prob = 0.0
                 else:
                     action = int(np.argmax(mask))
-                # 策略明确要求 local (=0)，但本地容量满时保留在队列等下一时隙，不偷偷转发
+                    log_prob = 0.0
+                # 策略明确要求 local (=0)，但本地容量满时保留在队列等下一时隙
                 if action == 0 and mask[0] == 0:
                     continue
                 if action >= len(mask) or mask[action] == 0:
@@ -179,6 +185,11 @@ class SatelliteMECEnv(EnvInterface):
                     task, action, t, neighbor_info, self.lyapunov_calc)
                 rewards[n]    += reward
                 n_executed[n] += 1
+                if sequential and hasattr(policy, 'record_task_transition'):
+                    policy.record_task_transition(
+                        sat_id=n, slot_t=t, state=state, action=action,
+                        log_prob=log_prob, mask=mask, task_reward=reward,
+                    )
                 if forward_info is not None:
                     tgt_id, fwd_task = forward_info
                     all_forwarded.append((n, tgt_id, fwd_task))
@@ -188,17 +199,23 @@ class SatelliteMECEnv(EnvInterface):
         slot_satisfied  = 0
         slot_e2e_delays: List[float] = []
         nb_start_map    = {sat.sat_id: sat.nb for sat in sats}
+        done_per_sat    = {n: 0 for n in range(cfg.N_SATS)}
+        timeout_per_sat = {n: 0 for n in range(cfg.N_SATS)}
+        satisfied_per_sat = {n: 0 for n in range(cfg.N_SATS)}
 
         for sat in sats:
             done_tasks, compute_timeout = sat.process_tasks(t)
             slot_done += len(done_tasks)
+            done_per_sat[sat.sat_id] += len(done_tasks)
             if compute_timeout:
                 self.episode_timeout += len(compute_timeout)
+                timeout_per_sat[sat.sat_id] += len(compute_timeout)
             for task in done_tasks:
                 real_delay = (task.finish_slot - task.arrive_slot) * cfg.TAU
                 slot_e2e_delays.append(real_delay)
                 if real_delay <= task.deadline:
                     slot_satisfied += 1
+                    satisfied_per_sat[sat.sat_id] += 1
                     rewards[sat.sat_id] += cfg.COMPLETION_BONUS
 
         self.episode_done += slot_done
@@ -216,11 +233,25 @@ class SatelliteMECEnv(EnvInterface):
                 new_arrivals=[], received_tasks=received, current_slot=t)
             if transit_timeout:
                 self.episode_timeout += len(transit_timeout)
+                timeout_per_sat[sat.sat_id] += len(transit_timeout)
 
         # 7. DoD / alpha 更新
         for sat in sats:
             sat.update_dod(nb_start=nb_start_map[sat.sat_id])
             sat.update_alpha_avg()
+
+        # 8. Outcome-aware reward 注入（仅训练阶段，保留对 baseline 透明）
+        if self.phase == 'train':
+            for sat in sats:
+                n = sat.sat_id
+                queue_pressure = (sat.qf_size + sat.qb_size) / max(cfg.QUEUE_NORM, 1.0)
+                rewards[n] += (
+                    + cfg.W_DONE    * satisfied_per_sat[n]
+                    - cfg.W_TIMEOUT * timeout_per_sat[n]
+                    - cfg.W_REJECT  * rejected_per_sat[n]
+                    - cfg.W_HL      * sat.slot_health_loss / max(cfg.HL_NORM, 1e-12)
+                    - cfg.W_QUEUE   * queue_pressure
+                )
 
         self.current_slot     += 1
         self.slots_in_episode += 1
@@ -259,7 +290,7 @@ class SatelliteMECEnv(EnvInterface):
         if self.phase == 'eval':
             self.eval_arrived            += slot_arrived
             self.eval_done               += slot_done
-            self.eval_timeout            += self.episode_timeout
+            self.eval_timeout            += slot_timeout_count   # 修：之前累加 episode 累计值
             self.eval_satisfied          += slot_satisfied
             self.eval_satisfaction_denom += satisfaction_denom
             info['eval_completion_rate']       = self.eval_done / max(self.eval_arrived, 1)
