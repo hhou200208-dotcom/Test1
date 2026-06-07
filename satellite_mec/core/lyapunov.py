@@ -74,11 +74,14 @@ class LyapunovCalculator:
 
     # ── DoD 增量估算 ──────────────────────────────────────────
     def delta_dod_comp(self, task: "Task", nb_next: int) -> float:
-        """计算执行一个任务（并发数为 nb_next）产生的 DoD 增量。"""
+        """估算执行一个任务产生的 DoD 增量（用于决策排序）。
+
+        Li-style 整星 DVFS 下，单任务无清晰闭式能耗；这里取**上界估计**
+        E_ceil = κ · F_CMP_MAX² · S · H（任务独占 CPU、运行在 f_max 时的能耗）。
+        nb_next 参数保留是为了兼容旧 API，但不再参与能耗公式。
+        """
         cfg = self.cfg
-        if nb_next <= 0:
-            return 0.0
-        energy = cfg.KAPPA * task.size * task.cpu_cycles * (cfg.CPU_FREQ ** 2) / (nb_next ** 2)
+        energy = cfg.KAPPA * task.size * task.cpu_cycles * (cfg.CPU_FREQ ** 2)
         return energy / cfg.E_CAP
 
     def delta_dod_trans(self, task: "Task", b_nm: float) -> float:
@@ -186,12 +189,12 @@ class LyapunovCalculator:
             'n_f':     neighbor_info.get('n_f', 0),
         }
 
-    def compute_update_delta_dod_comp_timeslot(self, nb: int) -> float:
-        """单时隙计算功耗产生的 DoD 增量（全速 CPU_FREQ，nb 个并发任务）。"""
+    def compute_update_delta_dod_comp_timeslot(self, f_cmp: float) -> float:
+        """单时隙计算功耗产生的 DoD 增量（Li-style DVFS：P=κf³, E=Pτ）。"""
         cfg = self.cfg
-        if nb <= 0:
+        if f_cmp <= 0:
             return 0.0
-        return cfg.TAU * cfg.KAPPA * (cfg.CPU_FREQ ** 3) / (cfg.E_CAP * (nb ** 2))
+        return cfg.TAU * cfg.KAPPA * (f_cmp ** 3) / cfg.E_CAP
 
     def compute_update_delta_dod_trans_timeslot(
         self, forwarded_tasks: List[Tuple]

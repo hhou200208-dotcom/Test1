@@ -53,7 +53,7 @@ class Config:
     K_MAX: int = 3                                      # 最大转发跳数
 
     # ── 计算参数 ──────────────────────────────────────────────
-    CPU_FREQ: float = 2e9                               # cycles/s
+    CPU_FREQ: float = 2e9                               # cycles/s（DVFS 上限 F_CMP_MAX，Zhang TMC 2023）
     MAX_DISPATCH: int = 6                               # 卫星最大并发任务数
     KAPPA: float = 1e-26                                # 能耗系数
 
@@ -118,6 +118,11 @@ class Config:
         self.B_BITS_MAX: float = self.B_MAX * self.TAU
         self.THETA: float = 2.0 * (self.S_MAX * self.MAX_DISPATCH
                                    + self.N_NEIGHBORS * self.B_BITS_MAX)
+        # DVFS（Li-style）校准：让 f_cmp = F_CMP_MAX 在"满队列"工况下成立。
+        # 满队列 Q_max = MAX_DISPATCH·S_MAX·H_MAX cycles
+        # 由 f* = sqrt(Q/(3 V κ)) 反解 V_DVFS = Q_max / (3 · F_CMP_MAX^2 · κ)
+        q_max_cycles = self.MAX_DISPATCH * self.S_MAX * self.H_MAX
+        self.V_DVFS: float = q_max_cycles / (3.0 * (self.CPU_FREQ ** 2) * self.KAPPA)
         comp_term = self.TAU * self.KAPPA * (self.CPU_FREQ ** 3)
         trans_term = self.P_T * self.N_NEIGHBORS * self.S_MAX / self.B_MIN
         self.DELTA_MAX: float = (comp_term + trans_term) / self.E_CAP
@@ -158,7 +163,7 @@ class Config:
         print(f"[Config] LAMBDA_MAX={self.LAMBDA_MAX:.0f}, "
               f"THETA_NUM={self.THETA_NUM:.0f}, "
               f"L_MAX_NEW_RAW={self.L_MAX_NEW_RAW:.4e}, "
-              f"Q_NORM={self.Q_NORM:.4e}")
+              f"Q_NORM={self.Q_NORM:.4e}, V_DVFS={self.V_DVFS:.4e}")
 
     # ── 维度查询 ──────────────────────────────────────────────
     def get_state_dim(self) -> int:
@@ -196,12 +201,19 @@ class Config:
 
     # ── 内部校验 ──────────────────────────────────────────────
     def _verify_power_balance(self):
-        avg_nb = max(self.MAX_DISPATCH / 2, 1)
-        avg_comp_power = self.KAPPA * (self.CPU_FREQ ** 3) / (avg_nb ** 2)
+        # DVFS（Li-style）下 f_cmp 自适应队列。
+        # 取 q_avg ≈ avg_nb · S_AVG · H_AVG 估算平均频率与功率。
+        avg_nb   = max(self.MAX_DISPATCH / 2, 1)
+        h_avg    = 0.5 * (self.H_MIN + self.H_MAX)
+        q_avg    = avg_nb * self.S_AVG * h_avg
+        f_avg    = min(math.sqrt(q_avg / (3.0 * self.V_DVFS * self.KAPPA)),
+                       self.CPU_FREQ)
+        avg_comp_power = self.KAPPA * (f_avg ** 3)
         avg_trans_power = self.P_T * self.LAMBDA * self.S_AVG / self.B_AVG
         avg_solar_power = self.P_SOLAR_MAX * self.LIGHT_RATIO
         total = avg_comp_power + avg_trans_power + self.P_HOUSEKEEPING
-        print(f"[Config] 假设1验证（功耗/充电比={total/avg_solar_power:.6f}）:",
+        print(f"[Config] 假设1验证（DVFS f_avg={f_avg/1e9:.3f} GHz，"
+              f"功耗/充电比={total/avg_solar_power:.6f}）:",
               "✓" if total <= avg_solar_power else "⚠ 不满足")
 
     def _verify_resource_surplus(self):

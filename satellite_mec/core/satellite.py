@@ -30,6 +30,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from core.dvfs import select_freq as dvfs_select_freq, deadline_floor as dvfs_deadline_floor
+
 if TYPE_CHECKING:
     from core.config import Config
     from core.task import Task
@@ -86,6 +88,7 @@ class Satellite:
         self.last_done_count:   int                       = 0
         self._comp_energy:      float                     = 0.0
         self._trans_energy:     float                     = 0.0
+        self._slot_f_cmp:       float                     = 0.0
         self.slot_health_loss:  float                     = 0.0
         self.slot_delta_l_comp: float                     = 0.0
         self.slot_delta_l_trans: float                    = 0.0
@@ -119,6 +122,7 @@ class Satellite:
         self.z_hat      = 0.0
         self._comp_energy  = 0.0
         self._trans_energy = 0.0
+        self._slot_f_cmp   = 0.0
         self.slot_health_loss   = 0.0
         self.slot_delta_l_comp  = 0.0
         self.slot_delta_l_trans = 0.0
@@ -143,6 +147,7 @@ class Satellite:
         self.alpha_num = 0
         self._comp_energy    = 0.0
         self._trans_energy   = 0.0
+        self._slot_f_cmp     = 0.0
         self._forwarded_tasks = []
         self._pending_compute = []
 
@@ -365,8 +370,9 @@ class Satellite:
             self.z_hat     += lyapunov_calc.delta_dod_comp(task, nb_next)
             self.alpha_num += 1
             if nb_next > 0:
+                # Li-style DVFS：单任务能耗无闭式，记录上界估计供监控用
                 self._comp_energy += (self.cfg.KAPPA * task.size * task.cpu_cycles
-                                      * (self.cfg.CPU_FREQ ** 2) / (nb_next ** 2))
+                                      * (self.cfg.CPU_FREQ ** 2))
             self._pending_compute.append(task)
             task.set_computing()
             task.current_sat = self.sat_id
@@ -395,7 +401,11 @@ class Satellite:
         """
         推进 compute_queue 中所有任务的计算进度一个时隙。
 
-        先驱逐超时任务（释放 CPU 份额），再对剩余任务均分 CPU_FREQ 推进。
+        步骤：(1) 驱逐超时任务；(2) 按当前 backlog 通过 Li-style DVFS 求解
+        f_cmp(t) ∈ [0, CPU_FREQ]；(3) 把 f_cmp·τ 的 cycle 预算平分给剩余任务。
+
+        f_cmp 由 core.dvfs.select_freq 返回，记入 self._slot_f_cmp 供 update_dod
+        计算真实能耗使用。
 
         Parameters
         ----------
@@ -424,13 +434,21 @@ class Satellite:
                 timeout_tasks.extend(expired)
 
         if self.nb == 0:
+            self._slot_f_cmp     = 0.0
             self.last_done_count = 0
             return done_tasks, timeout_tasks
 
-        # 第二步：每任务独占全频 CPU（dedicated-core model），推进计算
+        # 第二步：DVFS 选频（Lyapunov 闭式 + 截止时间下限）
+        q_cycles = sum(t.get_remaining_size() * t.cpu_cycles for t in self.compute_queue)
+        f_floor  = dvfs_deadline_floor(cfg, self.compute_queue, current_slot)
+        f_cmp    = dvfs_select_freq(cfg, q_cycles, f_floor=f_floor)
+        self._slot_f_cmp = f_cmp
+
+        # 第三步：平分 cycle 预算推进任务
+        cycles_per_task = f_cmp * cfg.TAU / self.nb if self.nb > 0 else 0.0
         tasks_to_remove = []
         for task in self.compute_queue:
-            processed = min(cfg.CPU_FREQ * cfg.TAU / task.cpu_cycles,
+            processed = min(cycles_per_task / task.cpu_cycles,
                             task.get_remaining_size())
             task.update_processed(processed)
             if task.is_done():
@@ -449,17 +467,19 @@ class Satellite:
         """
         更新 DoD 和虚拟队列 z（每时隙末尾调用一次）。
 
+        计算能耗采用 Li-style 整星 DVFS：使用 process_tasks 求得的 f_cmp(t)
+        计算 P_comp = κ·f_cmp³；nb_start 不再参与能耗（保留参数为兼容）。
+
         Parameters
         ----------
-        nb_start : 时隙开始时的并发数（用于能耗估算）；-1 表示使用当前 nb
+        nb_start : 保留参数（用于其它统计），不再参与能耗计算
         """
         cfg       = self.cfg
         dod_before = self.dod
-        nb_for_comp = nb_start if nb_start >= 0 else self.nb
 
-        delta_comp = ((cfg.TAU * cfg.KAPPA * (cfg.CPU_FREQ ** 3)
-                       / (cfg.E_CAP * (nb_for_comp ** 2)))
-                      if nb_for_comp > 0 else 0.0)
+        f_cmp = self._slot_f_cmp
+        delta_comp = (cfg.TAU * cfg.KAPPA * (f_cmp ** 3) / cfg.E_CAP
+                      if f_cmp > 0.0 else 0.0)
         delta_trans = (cfg.P_T * sum(
             task.size / b_nm for _, task, b_nm in self._forwarded_tasks if b_nm > 0
         ) / cfg.E_CAP)
