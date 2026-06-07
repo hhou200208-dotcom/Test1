@@ -137,11 +137,15 @@ class LyapunovCalculator:
         cfg = self.cfg
         dod = sat_state['dod']; n_f = sat_state['n_f']
         nb_hat = sat_state['nb_hat']; z_hat = sat_state['z_hat']
-        tilde_N_F = n_f - cfg.THETA_NUM
+        # Lyapunov drift（本地）：forward 队列 -1、compute 队列 +1
+        #   ⇒ drift contribution ∝ (Q_compute - Q_forward) = (nb_hat - n_f)
+        # 原 (nb_hat - n_f + THETA_NUM) 引入了未抵消的常数偏置，
+        # 使 local cost 永远比 forward 大 ~base_queue·THETA_NUM，
+        # 导致 LyapunovGreedy/MHSPO 过度转发。
         remain = max(task.remain_time(current_slot), 1e-3)
         urgency = 1.0 - remain / cfg.D_MAX_MAX
         base_queue = task.size / (cfg.Q_NORM + 1e-9) / (1 + cfg.V)
-        queue_item = base_queue * (nb_hat - tilde_N_F) + base_queue * urgency
+        queue_item = base_queue * (nb_hat - n_f) + base_queue * urgency
         loss_item = 0.0
         if self.use_battery_loss:
             delta_l = self.delta_health_loss_comp(task, sat_state, dod)
@@ -173,12 +177,14 @@ class LyapunovCalculator:
         cfg = self.cfg
         dod = sat_state['dod']; n_f_n = sat_state['n_f']
         n_f_m = neighbor_state.get('n_f', 0); z_hat = sat_state['z_hat']
-        tilde_N_F_n = n_f_n - cfg.THETA_NUM
-        tilde_N_F_m = n_f_m - cfg.THETA_NUM
+        # Lyapunov drift（转发）：我 forward 队列 -1、邻居 forward 队列 +1
+        #   ⇒ drift contribution ∝ (n_f_m - n_f_n)
+        # 注：原 (tilde_N_F_m - tilde_N_F_n) 中 THETA_NUM 已自然抵消，等价于
+        # (n_f_m - n_f_n)，这里改成直观写法、与 normalized_local_cost 对称。
         remain = max(task.remain_time(current_slot), 1e-3)
         urgency = 1.0 - remain / cfg.D_MAX_MAX
         base_queue = task.size / (cfg.Q_NORM + 1e-9) / (1 + cfg.V)
-        queue_item = base_queue * (tilde_N_F_m - tilde_N_F_n) + base_queue * urgency
+        queue_item = base_queue * (n_f_m - n_f_n) + base_queue * urgency
         loss_item = 0.0
         if self.use_battery_loss:
             delta_l = self.delta_health_loss_trans(task, b_nm, dod)
