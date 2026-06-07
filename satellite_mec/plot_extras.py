@@ -83,13 +83,21 @@ def main():
     out_dir = args.out_dir or os.path.join(d, 'figures_final')
     os.makedirs(out_dir, exist_ok=True)
 
-    # ── Figure 11: System delay overhead PDF ─────────────────────
+    # ── Figure 11: System delay overhead PDF (Little's law conversion) ──
+    # 把每时隙 avg queue (Mbit/sat) 转成 sojourn time (秒)：
+    #   W = (Q_bits / S_avg_bits) / λ_per_sat_per_slot · TAU
+    # 这是"如果当前队列稳态、按到达率排空所需时间"，即系统延迟开销
+    S_AVG_MBIT = 30.0           # (S_MIN+S_MAX)/2 = (10+50)/2 Mbit
+    LAMBDA_PER_SAT = 0.880       # = LAMBDA_HIGH·1/5 + LAMBDA_LOW·4/5 at λ_high=4
+    TAU = 1.0
     fig, ax = plt.subplots(figsize=(8, 5.5))
-    # collect per-policy queue distributions
     all_samples = {}
     for pol in POLICIES:
-        samples = load_slot_csv(d, pol, 'total_queue_size', scale=1.0 / 1e6)
-        all_samples[pol] = samples
+        q_mbit = load_slot_csv(d, pol, 'total_queue_size', scale=1.0 / 1e6)
+        # tasks per sat = Q (Mbit) / S_avg (Mbit/task)
+        # delay (s) = tasks / λ (tasks/s) · τ
+        delay_s = (q_mbit / S_AVG_MBIT) / LAMBDA_PER_SAT * TAU
+        all_samples[pol] = delay_s
     lo = min(s.min() for s in all_samples.values())
     hi = max(s.max() for s in all_samples.values())
     margin = (hi - lo) * 0.05
@@ -97,10 +105,10 @@ def main():
     for pol in POLICIES:
         kde_with_markers(ax, all_samples[pol], x_range,
                          label=pol, color=COLORS[pol], marker=MARKERS[pol])
-    ax.set_xlabel('System delay overhead (MB / satellite)', fontsize=12)
+    ax.set_xlabel('System delay overhead (s)', fontsize=12)
     ax.set_ylabel('Distribution', fontsize=12)
     ax.grid(alpha=0.4, linestyle='--')
-    ax.legend(loc='upper left', fontsize=10, ncol=2, frameon=True)
+    ax.legend(loc='upper right', fontsize=10, ncol=2, frameon=True)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, '11_system_delay_overhead.png'), dpi=150)
     plt.close()
