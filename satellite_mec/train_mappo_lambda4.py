@@ -46,19 +46,31 @@ def parse_args():
     p.add_argument('--n_runs',      type=int,   default=1)
     p.add_argument('--no_plots',    action='store_true')
     p.add_argument('--debug',       action='store_true')
+    # 诊断 sweep 用：覆盖关键超参，方便 P0 诊断
+    p.add_argument('--beta',     type=float, default=None, help='PPO entropy coef (default 0.15)')
+    p.add_argument('--w_done',   type=float, default=None)
+    p.add_argument('--w_hl',     type=float, default=None)
+    p.add_argument('--w_timeout',type=float, default=None)
+    p.add_argument('--w_reject', type=float, default=None)
+    p.add_argument('--skip_baselines', action='store_true',
+                   help='只跑 MAPPO 训练+评估，跳过 4 baseline（诊断加速用）')
+    p.add_argument('--tag',      type=str, default='', help='额外标识，加入结果目录名')
     return p.parse_args()
 
 
 def make_config(lh: float, args) -> Config:
-    """Build Config with overridden LAMBDA_HIGH."""
+    """Build Config with overridden LAMBDA_HIGH + 可选超参。"""
     class _C(Config):
         LAMBDA_HIGH = lh
         LAMBDA      = lh * Config.LAMBDA_HIGH_RATIO + Config.LAMBDA_LOW * (1 - Config.LAMBDA_HIGH_RATIO)
     cfg = _C()
-    if args.t_train is not None:
-        cfg.T_TRAIN = args.t_train
-    if args.n_runs is not None:
-        cfg.N_EVAL_RUNS = args.n_runs
+    if args.t_train  is not None: cfg.T_TRAIN     = args.t_train
+    if args.n_runs   is not None: cfg.N_EVAL_RUNS = args.n_runs
+    if args.beta     is not None: cfg.BETA        = args.beta
+    if args.w_done   is not None: cfg.W_DONE      = args.w_done
+    if args.w_hl     is not None: cfg.W_HL        = args.w_hl
+    if args.w_timeout is not None: cfg.W_TIMEOUT  = args.w_timeout
+    if args.w_reject is not None: cfg.W_REJECT    = args.w_reject
     return cfg
 
 
@@ -66,24 +78,33 @@ def main():
     args = parse_args()
     cfg  = make_config(args.lambda_high, args)
 
-    runner = ExperimentRunner(cfg, f'MAPPO_lh{args.lambda_high:.1f}',
-                              debug=args.debug)
+    exp_name = f'MAPPO_lh{args.lambda_high:.1f}'
+    if args.tag:
+        exp_name += f'_{args.tag}'
+    runner = ExperimentRunner(cfg, exp_name, debug=args.debug)
     logger = runner.logger
     env    = SatelliteMECEnv(cfg)
     logger.info(f"=== λ_high={args.lambda_high}, λ={cfg.LAMBDA:.3f}, "
                 f"T_TRAIN={cfg.T_TRAIN}, n_runs={cfg.N_EVAL_RUNS} ===")
     logger.info(f"State dim {cfg.get_state_dim()}, Critic dim {cfg.get_critic_state_dim()}")
+    logger.info(f"BETA={cfg.BETA}, W_DONE={cfg.W_DONE}, W_TIMEOUT={cfg.W_TIMEOUT}, "
+                f"W_REJECT={cfg.W_REJECT}, W_HL={cfg.W_HL}, W_QUEUE={cfg.W_QUEUE}")
 
-    for name in ['MAPPO', 'LocalOnly', 'GreedyDelay', 'LyapunovGreedy', 'MHSPO']:
+    if args.skip_baselines:
+        policy_names = ['MAPPO']
+    else:
+        policy_names = ['MAPPO', 'LocalOnly', 'GreedyDelay', 'LyapunovGreedy', 'MHSPO']
+    for name in policy_names:
         runner.setup_algorithm_dir(name)
 
     lyapunov_default = LyapunovCalculator(cfg)
 
     mappo        = MAPPOPolicy(cfg, name='MAPPO')
-    local_only   = LocalOnlyPolicy(cfg, env)
-    greedy_delay = GreedyDelayPolicy(cfg, env)
-    lya_greedy   = LyapunovGreedyPolicy(cfg, env)
-    mhspo        = MHSPOPolicy(cfg, env, rho_d=1.0, rho_e=1.0, V_lyapunov=10.0)
+    if not args.skip_baselines:
+        local_only   = LocalOnlyPolicy(cfg, env)
+        greedy_delay = GreedyDelayPolicy(cfg, env)
+        lya_greedy   = LyapunovGreedyPolicy(cfg, env)
+        mhspo        = MHSPOPolicy(cfg, env, rho_d=1.0, rho_e=1.0, V_lyapunov=10.0)
 
     # ── 训练 MAPPO ────────────────────────────────────────────
     logger.info("训练 MAPPO（sequential + outcome-aware reward）")
@@ -91,11 +112,15 @@ def main():
     runner.run_training(mappo, env)
 
     # ── 预热 MHSPO DOGD 预测器 ────────────────────────────────
-    logger.info("预热 MHSPO DOGD")
-    runner.run_warmup(env, policy=mhspo)
+    if not args.skip_baselines:
+        logger.info("预热 MHSPO DOGD")
+        runner.run_warmup(env, policy=mhspo)
 
     # ── 评估 ──────────────────────────────────────────────────
-    policies = [mappo, local_only, greedy_delay, lya_greedy, mhspo]
+    if args.skip_baselines:
+        policies = [mappo]
+    else:
+        policies = [mappo, local_only, greedy_delay, lya_greedy, mhspo]
     curves_by_run    = []
     snapshots_by_run = []
     snapshot_interval = 360
@@ -135,7 +160,8 @@ def main():
 
     # ── 摘要：5 项标准指标 ────────────────────────────────────
     print("\n" + "=" * 90)
-    print("  评估结果汇总 (λ_high={:.1f}) — 5 项标准指标".format(args.lambda_high))
+    print(f"  评估结果 (λ_high={args.lambda_high} BETA={cfg.BETA} "
+          f"W_DONE={cfg.W_DONE} W_HL={cfg.W_HL}) — 5 项标准指标")
     print("=" * 90)
     print(f"  {'策略':<16}{'CR':>8}{'满意度':>9}{'时延(s)':>10}"
           f"{'HL/slot':>14}{'DoD':>8}{'队列MB':>9}")
@@ -152,6 +178,16 @@ def main():
         qmb = summary.get('avg_queue_mb', {}).get('mean', 0)
         print(f"  {pol.name:<14}{cr:>8.4f}{sat:>9.4f}{dly:>10.3f}"
               f"{hl:>14.3e}{dod:>8.4f}{qmb:>9.2f}")
+
+    # MAPPO reward ledger 拆账（诊断 reward 权重）
+    mappo_summary = runner.recorders['MAPPO'].get_summary()
+    ledger = (mappo_summary.get('reward_ledger', {}) if mappo_summary else {})
+    if ledger:
+        print("\n" + "-" * 90)
+        print("  MAPPO eval-slot 平均 reward 组成（诊断 reward 权重平衡）:")
+        for k in ['done', 'timeout', 'reject', 'hl', 'queue', 'action_cost', 'total']:
+            v = ledger.get(k, 0.0)
+            print(f"     {k:<14} {v:+.3f}")
 
     logger.info(f"全部完成！结果目录：{runner.base_dir}")
 

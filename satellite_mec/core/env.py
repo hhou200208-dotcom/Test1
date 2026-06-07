@@ -240,18 +240,29 @@ class SatelliteMECEnv(EnvInterface):
             sat.update_dod(nb_start=nb_start_map[sat.sat_id])
             sat.update_alpha_avg()
 
-        # 8. Outcome-aware reward 注入（仅训练阶段，保留对 baseline 透明）
-        if self.phase == 'train':
-            for sat in sats:
-                n = sat.sat_id
-                queue_pressure = (sat.qf_size + sat.qb_size) / max(cfg.QUEUE_NORM, 1.0)
-                rewards[n] += (
-                    + cfg.W_DONE    * satisfied_per_sat[n]
-                    - cfg.W_TIMEOUT * timeout_per_sat[n]
-                    - cfg.W_REJECT  * rejected_per_sat[n]
-                    - cfg.W_HL      * sat.slot_health_loss / max(cfg.HL_NORM, 1e-12)
-                    - cfg.W_QUEUE   * queue_pressure
-                )
+        # 8. Outcome-aware reward 注入 + reward ledger 记录组成
+        #    ledger 总是计算（包括 eval 阶段），方便诊断；reward 注入仅训练阶段生效
+        ledger = {'done': 0.0, 'timeout': 0.0, 'reject': 0.0, 'hl': 0.0, 'queue': 0.0}
+        for sat in sats:
+            n = sat.sat_id
+            queue_pressure = (sat.qf_size + sat.qb_size) / max(cfg.QUEUE_NORM, 1.0)
+            r_done    =   cfg.W_DONE    * satisfied_per_sat[n]
+            r_timeout = - cfg.W_TIMEOUT * timeout_per_sat[n]
+            r_reject  = - cfg.W_REJECT  * rejected_per_sat[n]
+            r_hl      = - cfg.W_HL      * sat.slot_health_loss / max(cfg.HL_NORM, 1e-12)
+            r_queue   = - cfg.W_QUEUE   * queue_pressure
+            if self.phase == 'train':
+                rewards[n] += r_done + r_timeout + r_reject + r_hl + r_queue
+            ledger['done']    += r_done
+            ledger['timeout'] += r_timeout
+            ledger['reject']  += r_reject
+            ledger['hl']      += r_hl
+            ledger['queue']   += r_queue
+        # 已经在 step 内累加进 rewards 的"action_cost"（来自 sat.apply_action 返回的 −Lyapunov_cost）
+        # 这里再做一次汇总，避免重复计算时把 reward 整体丢失
+        ledger['action_cost'] = float(sum(rewards.values())) - sum(ledger.values()) \
+                                if self.phase == 'train' else float(sum(rewards.values()))
+        ledger['total'] = float(sum(rewards.values()))
 
         self.current_slot     += 1
         self.slots_in_episode += 1
@@ -277,6 +288,7 @@ class SatelliteMECEnv(EnvInterface):
             'avg_cpu_freq':      stats.get('avg_cpu_freq', 0.0),
             'max_cpu_freq':      stats.get('max_cpu_freq', 0.0),
             'total_queue_size':  stats['avg_qf_size'] + stats['avg_qb_size'],
+            'reward_ledger':     ledger,    # 诊断：每 slot reward 组成
             'per_sat_dod':      [sat.dod for sat in self.constellation.satellites],
             'episode_arrived':   self.episode_arrived,
             'episode_done':      self.episode_done,
