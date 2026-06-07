@@ -14,28 +14,53 @@ $$
 \begin{aligned}
 \max_{\pi}\quad & \lim_{T\to\infty}\frac{1}{T}\sum_{t=0}^{T-1}\mathbb{E}_\pi\!\left[\sum_{n=1}^{N}\bigl(D_n(t) - \alpha H_n(t)\bigr)\right]\\
 \text{s.t.}\quad
-& \mathbb{E}[\delta_n(t)] \le \delta_{\max}\quad\text{(DoD upper bound)}\\
-& Q^F_n(t),\ Q^B_n(t)\text{ stable}\\
-& a_n^i(t)\in\{0,1,\dots,K\},\ \sum_i a_n^i(t)\le E_n
+& \lim_{T\to\infty}\tfrac{1}{T}\!\sum_{t=0}^{T-1}\mathbb{E}[\delta_n(t)] \le 0\quad\text{(long-term battery balance)}\\
+& Q^F_n(t),\ Q^B_n(t)\text{ stable}\quad\text{(queue stability)}\\
+& a_n^i(t)\in\{0,1,\dots,K\},\ \sum_i a_n^i(t)\le E_n\quad\text{(concurrency)}
 \end{aligned}
 $$
+
+Here $\delta_n(t)$ is the per-slot net DoD increment (energy expenditure − solar
+harvest), measured in fractions of $E_{\text{CAP}}$. The first constraint
+requires that on average the battery does not drain — i.e., long-term solar
+harvest balances total consumption. A hard clip
+$D_n(t+1) = \text{clip}(D_n(t) + \delta_n(t), D_{\min}, D_{\max})$ enforces
+physical bounds at each slot, while the virtual queue below targets the
+long-term average.
 
 This is a non-convex stochastic optimization with long-term constraints — no
 closed-form solution exists.
 
 ## 4.2 Virtual Queues
 
-Convert long-term constraints into per-slot queue stability:
+We construct three queues to convert long-term constraints into per-slot
+queue stability.
 
-**DoD virtual queue:**
-$$z_n(t+1) = \max\{0,\ z_n(t) + \delta_n(t) - \delta_{\max}\}$$
+**Real workload queues (bytes, follow Zhang TMC 2023):**
 
-**Real queues:**
-- $Q^F_n(t)$ — forward queue (bytes waiting to be scheduled)
-- $Q^B_n(t)$ — compute queue (bytes waiting to be processed)
+- $Q^F_n(t)$: forward queue (data awaiting scheduling)
+- $Q^B_n(t)$: compute queue (data awaiting CPU)
 
-**Lyapunov function:**
+These evolve as $Q(t+1) = \max\{0, Q(t) - \text{served}(t)\} + \text{arrived}(t)$.
+
+**DoD virtual queue (Neely-style):**
+
+By Neely's classical Lyapunov framework, the long-term constraint
+$\bar X \le X_{\max}$ corresponds to a virtual queue
+$z(t+1) = \max\{0, z(t) + X(t) - X_{\max}\}$. Here $X_{\max} = 0$, giving:
+
+$$z_n(t+1) = \max\{0,\ z_n(t) + \delta_n(t)\}$$
+
+$z_n$ accumulates whenever the satellite has been net-draining recently and
+decays back toward 0 when solar harvest exceeds expenditure. By Neely's
+drift theorem, **strong stability of $z_n$ is equivalent to the long-term
+battery balance constraint**.
+
+**Lyapunov function** combining all three queue families:
 $$L(\boldsymbol{\Theta}(t)) = \frac{1}{2}\sum_n\!\Big[(Q^F_n)^2 + (Q^B_n)^2 + \eta\,z_n^2\Big],\quad \eta = 0.5$$
+
+where $\boldsymbol{\Theta}(t) = \{Q^F_n, Q^B_n, z_n\}_n$ is the joint queue
+state and $\eta$ trades the DoD virtual queue against the workload queues.
 
 ## 4.3 Drift-plus-Penalty Decomposition
 
