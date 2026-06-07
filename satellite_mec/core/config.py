@@ -46,8 +46,8 @@ class Config:
     S_MIN: float = 10e6                                 # bits
     S_MAX: float = 50e6                                 # bits
     S_AVG: float = (S_MIN + S_MAX) / 2
-    H_MIN: float = 100.0                                # cycles/bit
-    H_MAX: float = 300.0
+    H_MIN: float = 10.0                                 # cycles/bit (Li et al. TSC 2024, κ_Li=0.1 bit/cycle)
+    H_MAX: float = 30.0                                 # cycles/bit (上沿留出 3× 异质性)
     D_MAX_MIN: float = 1.0                              # s，最小截止时间
     D_MAX_MAX: float = 12.0                             # s，最大截止时间
     K_MAX: int = 3                                      # 最大转发跳数
