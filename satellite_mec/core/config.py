@@ -83,11 +83,12 @@ class Config:
     COMPLETION_BONUS: float = 1.0                       # 任务完成奖励（直接激励CR）
 
     # ── Outcome-aware reward 权重（MAPPO 训练用，对 baseline 透明） ──
-    W_DONE:    float = 1.0                              # 每完成 1 个任务的奖励
-    W_TIMEOUT: float = 2.0                              # 每超时 1 个任务的惩罚
-    W_REJECT:  float = 2.0                              # 每拒收 1 个任务的惩罚
-    W_HL:      float = 30.0                             # 健康损失惩罚权重
-    W_QUEUE:   float = 0.1                              # 队列压力惩罚权重
+    # 上一组 (W_DONE=1, W_HL=30) HL 推太狠 → CR 卡 38%。重新平衡偏向 CR。
+    W_DONE:    float = 5.0                              # 每完成 1 个任务的奖励
+    W_TIMEOUT: float = 3.0                              # 每超时 1 个任务的惩罚
+    W_REJECT:  float = 3.0                              # 每拒收 1 个任务的惩罚
+    W_HL:      float = 10.0                             # 健康损失惩罚权重
+    W_QUEUE:   float = 0.05                             # 队列压力惩罚权重
     HL_NORM:   float = 1e-4                             # HL 归一化（典型 slot 量级）
     QUEUE_NORM: float = 0.0                             # 队列归一化（运行时填充为 Q_F_MAX）
 
