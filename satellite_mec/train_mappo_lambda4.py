@@ -52,6 +52,8 @@ def parse_args():
     p.add_argument('--w_hl',     type=float, default=None)
     p.add_argument('--w_timeout',type=float, default=None)
     p.add_argument('--w_reject', type=float, default=None)
+    p.add_argument('--no_battery', action='store_true',
+                   help='Ablation A2: 移除 reward 里的电池信号 (Lyapunov 电池项 + W_HL=0)，state 保留')
     p.add_argument('--skip_baselines', action='store_true',
                    help='只跑 MAPPO 训练+评估，跳过 4 baseline（诊断加速用）')
     p.add_argument('--tag',      type=str, default='', help='额外标识，加入结果目录名')
@@ -90,16 +92,23 @@ def main():
     logger.info(f"BETA={cfg.BETA}, W_DONE={cfg.W_DONE}, W_TIMEOUT={cfg.W_TIMEOUT}, "
                 f"W_REJECT={cfg.W_REJECT}, W_HL={cfg.W_HL}, W_QUEUE={cfg.W_QUEUE}")
 
+    mappo_name = 'MAPPO_NoBat' if args.no_battery else 'MAPPO'
     if args.skip_baselines:
-        policy_names = ['MAPPO']
+        policy_names = [mappo_name]
     else:
-        policy_names = ['MAPPO', 'LocalOnly', 'GreedyDelay', 'LyapunovGreedy', 'MHSPO']
+        policy_names = [mappo_name, 'LocalOnly', 'GreedyDelay', 'LyapunovGreedy', 'MHSPO']
     for name in policy_names:
         runner.setup_algorithm_dir(name)
 
-    lyapunov_default = LyapunovCalculator(cfg)
+    if args.no_battery:
+        # Ablation A2: 移除 reward 里的电池信号
+        lyapunov_default = LyapunovCalculator(cfg, use_battery_loss=False, use_dod_penalty=False)
+        cfg.W_HL = 0.0
+        logger.info("[ABLATION] no_battery: Lyapunov 电池项关闭 + W_HL=0")
+    else:
+        lyapunov_default = LyapunovCalculator(cfg)
 
-    mappo        = MAPPOPolicy(cfg, name='MAPPO')
+    mappo        = MAPPOPolicy(cfg, lyapunov_calc=lyapunov_default, name=mappo_name)
     if not args.skip_baselines:
         local_only   = LocalOnlyPolicy(cfg, env)
         greedy_delay = GreedyDelayPolicy(cfg, env)
@@ -180,7 +189,7 @@ def main():
               f"{hl:>14.3e}{dod:>8.4f}{qmb:>9.2f}")
 
     # MAPPO reward ledger 拆账（诊断 reward 权重）
-    mappo_summary = runner.recorders['MAPPO'].get_summary()
+    mappo_summary = runner.recorders[mappo_name].get_summary()
     ledger = (mappo_summary.get('reward_ledger', {}) if mappo_summary else {})
     if ledger:
         print("\n" + "-" * 90)
