@@ -124,6 +124,53 @@ def main():
     plt.close()
     print('saved 23_v_sensitivity_pareto.png')
 
+    # ── Figure 24: HL vs V (single panel) ───────────────────────
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+    hls = [r['HL'] for r in sweep]
+    ax.plot(vs, hls, marker='o', color='C3', linewidth=2.4,
+            markersize=10, markerfacecolor='C3', markeredgecolor='black',
+            markeredgewidth=1.2, label='LyaMAPPO (swept)', zorder=5)
+    for bname, bvals in baselines.items():
+        yb = bvals.get('HL')
+        if yb is None: continue
+        ax.axhline(yb, linestyle=BASELINE_LS[bname], color=BASELINE_COLORS[bname],
+                   linewidth=1.8, alpha=0.9, label=bname)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlabel('V (Lyapunov trade-off parameter)', fontsize=12)
+    ax.set_ylabel('Health Loss / slot', fontsize=12)
+    ax.set_title('Battery Health Loss sensitivity to V',
+                 fontsize=13, fontweight='bold')
+    ax.grid(alpha=0.4, which='both', linestyle='--')
+    ax.legend(loc='best', fontsize=10, frameon=True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, '24_v_hl.png'), dpi=150)
+    plt.close()
+    print('saved 24_v_hl.png')
+
+    # ── Figure 25: Queue backlog vs V (single panel) ────────────
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+    qs = [r['queue_mb'] for r in sweep]
+    ax.plot(vs, qs, marker='o', color='C3', linewidth=2.4,
+            markersize=10, markerfacecolor='C3', markeredgecolor='black',
+            markeredgewidth=1.2, label='LyaMAPPO (swept)', zorder=5)
+    for bname, bvals in baselines.items():
+        yb = bvals.get('queue_mb')
+        if yb is None: continue
+        ax.axhline(yb, linestyle=BASELINE_LS[bname], color=BASELINE_COLORS[bname],
+                   linewidth=1.8, alpha=0.9, label=bname)
+    ax.set_xscale('log')
+    ax.set_xlabel('V (Lyapunov trade-off parameter)', fontsize=12)
+    ax.set_ylabel('Queue backlog (MB / satellite)', fontsize=12)
+    ax.set_title('Queue backlog sensitivity to V',
+                 fontsize=13, fontweight='bold')
+    ax.grid(alpha=0.4, which='both', linestyle='--')
+    ax.legend(loc='best', fontsize=10, frameon=True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, '25_v_queue.png'), dpi=150)
+    plt.close()
+    print('saved 25_v_queue.png')
+
     # Summary print
     print('\nV sweep summary:')
     print(f"  {'V':>8} {'CR':>9} {'HL':>13} {'DoD':>9}")
