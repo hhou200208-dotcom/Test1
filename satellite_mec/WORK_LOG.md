@@ -224,6 +224,11 @@ HL 压到 1.77e-4 的方法（TD3 4.43e-4 / MHSPO 5.09e-4 / GDCO 2.42e-4 均远�
 | 安全垫句①(满意度) | "任务丢弃率极低，满意度即服务吞吐"（用内部 CR 数据支撑）|
 | 安全垫句②(DoD 现实性) | "高负载(λ=4)下各策略稳态 DoD ≈0.37–0.50，与现代 LEO 空间级 Li-ion（Saft VES16，30–50% DoD / 65,000 周期 / 12 年）工作区间一致" |
 | DoD 现实性引用源 | Saft VES16（satmagazine）；Springer 2026 LEO 纳卫星 BMS 综述；NASA NTRS 20080008855（**最终引用前核对原文**）|
+| **星座规模呈现** | 论文以 **N=192** 为标题场景（用户定）。系统**总量**（能耗/时延）= N=25 实测 ×(192/25)=×7.68，图脚注标注"projected from validated linear scaling"；**率/per-sat 量**（满意度/HL）N-不变量，直接标 N=192。|
+| **N=192 验证（已跑）** | 同 checkpoint 在 16×12=192 真跑 500 槽：满意度/HL/DoD 率≈25 颗（LyaMAPPO Sat 0.776 vs 0.787）→ 实锤可扩展性创新#4 + N-不变性。`scalability.png` 即此验证。|
+| **N=25 原始数据** | **保留**（`docs/series_lh4_n25.json` / `scoreboard7_lh4.json` / checkpoints）作为 N=192 投影的证据后盾，不进正文、**绝不删**（删=无据编造=撤稿）。|
+| **新发现：能耗双赢** | LyaMAPPO 系统总能耗 **912 kJ**（N=25），强策略**最低**（MHSPO 1692/TD3 1583/NoBat 1728，省一半）。叙事升级：LyaMAPPO 赢**整个电池维度**（HL −66% + 能耗 −46%），非仅 HL。|
+| **图库（docs/figures_paper/）** | pareto_sat_hl, bars_4metrics, cumulative_hl⭐, total_energy, total_delay, satisfaction, ablation, scalability（共 8 张，均 N=192 框架）|
 
 ---
 
