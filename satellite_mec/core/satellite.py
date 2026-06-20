@@ -96,6 +96,9 @@ class Satellite:
         self.slot_health_loss:  float                     = 0.0
         self.slot_delta_l_comp: float                     = 0.0
         self.slot_delta_l_trans: float                    = 0.0
+        self.slot_comp_energy:  float                     = 0.0   # 诊断：本时隙计算能耗(J)
+        self.slot_trans_energy: float                     = 0.0   # 诊断：本时隙传输能耗(J)
+        self.slot_house_energy: float                     = 0.0   # 诊断：本时隙星务能耗(J)
         self.reset()
 
     # ── 重置 ──────────────────────────────────────────────────
@@ -134,6 +137,9 @@ class Satellite:
         self.slot_health_loss   = 0.0
         self.slot_delta_l_comp  = 0.0
         self.slot_delta_l_trans = 0.0
+        self.slot_comp_energy   = 0.0
+        self.slot_trans_energy  = 0.0
+        self.slot_house_energy  = 0.0
 
     # ── 时隙初始化 ────────────────────────────────────────────
     def update_solar(self, t: int) -> None:
@@ -538,6 +544,11 @@ class Satellite:
         delta_solar_raw = self.solar_power * cfg.TAU / cfg.E_CAP
         delta_solar = min(delta_solar_raw, max(dod_before - cfg.DOD_MIN, 0.0))
         delta = delta_comp + delta_trans + delta_house - delta_solar
+
+        # 诊断字段：本时隙该卫星实际消耗能量(J)，供"系统总能耗图"汇总（由 env 求和）
+        self.slot_comp_energy  = delta_comp  * cfg.E_CAP   # 计算能耗 = TAU·KAPPA·f_cmp³
+        self.slot_trans_energy = delta_trans * cfg.E_CAP   # 传输能耗 = P_T·Σ(size/b)
+        self.slot_house_energy = delta_house * cfg.E_CAP   # 星务基线能耗（与策略无关，常量）
 
         a = cfg.A_COEF
         l_prime = ((10 ** (a * (dod_before - 1)))

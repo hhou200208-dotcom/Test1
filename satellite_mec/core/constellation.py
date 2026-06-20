@@ -259,6 +259,12 @@ class Constellation:
             'avg_cpu_freq': float(np.mean(freqs)),
             'max_cpu_freq': float(np.max(freqs)),
         }
+        # 系统总能耗（J/槽）：所有卫星计算+传输能耗求和（星务常量项不计，便于策略对比）
+        comp_e  = sum(sat.slot_comp_energy  for sat in self.satellites)
+        trans_e = sum(sat.slot_trans_energy for sat in self.satellites)
+        stats['slot_system_energy']       = float(comp_e + trans_e)
+        stats['slot_system_energy_comp']  = float(comp_e)
+        stats['slot_system_energy_trans'] = float(trans_e)
         stats.update(self.get_health_stats())
         return stats
 

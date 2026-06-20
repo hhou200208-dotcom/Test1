@@ -292,6 +292,9 @@ class SatelliteMECEnv(EnvInterface):
             'avg_delta_l_trans': stats.get('avg_delta_l_trans', 0.0),
             'avg_cpu_freq':      stats.get('avg_cpu_freq', 0.0),
             'max_cpu_freq':      stats.get('max_cpu_freq', 0.0),
+            'slot_system_energy':       stats.get('slot_system_energy', 0.0),       # J/槽，系统总能耗
+            'slot_system_energy_comp':  stats.get('slot_system_energy_comp', 0.0),
+            'slot_system_energy_trans': stats.get('slot_system_energy_trans', 0.0),
             'total_queue_size':  stats['avg_qf_size'] + stats['avg_qb_size'],
             'reward_ledger':     ledger,    # 诊断：每 slot reward 组成
             'per_sat_dod':      [sat.dod for sat in self.constellation.satellites],
