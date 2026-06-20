@@ -29,7 +29,7 @@ except ImportError:
 
 from core import Config, SatelliteMECEnv, LyapunovCalculator
 from baselines import (LocalOnlyPolicy, GreedyDelayPolicy,
-                       LyapunovGreedyPolicy, MHSPOPolicy)
+                       LyapunovGreedyPolicy, MHSPOPolicy, GDCOPolicy)
 from evaluation import MetricsRecorder, ExperimentRunner
 from evaluation.plotting import (
     plot_metric_per_run, plot_dod_snapshots,
@@ -99,7 +99,7 @@ def main():
     if args.skip_baselines:
         policy_names = [mappo_name]
     else:
-        policy_names = [mappo_name, 'LocalOnly', 'GreedyDelay', 'LyapunovGreedy', 'MHSPO']
+        policy_names = [mappo_name, 'LocalOnly', 'GreedyDelay', 'LyapunovGreedy', 'MHSPO', 'GDCO']
     for name in policy_names:
         runner.setup_algorithm_dir(name)
 
@@ -117,6 +117,7 @@ def main():
         greedy_delay = GreedyDelayPolicy(cfg, env)
         lya_greedy   = LyapunovGreedyPolicy(cfg, env)
         mhspo        = MHSPOPolicy(cfg, env, rho_d=1.0, rho_e=1.0, V_lyapunov=10.0)
+        gdco         = GDCOPolicy(cfg, env)
 
     # ── 训练 MAPPO ────────────────────────────────────────────
     logger.info("训练 MAPPO（sequential + outcome-aware reward）")
@@ -132,7 +133,7 @@ def main():
     if args.skip_baselines:
         policies = [mappo]
     else:
-        policies = [mappo, local_only, greedy_delay, lya_greedy, mhspo]
+        policies = [mappo, local_only, greedy_delay, lya_greedy, mhspo, gdco]
     curves_by_run    = []
     snapshots_by_run = []
     snapshot_interval = 360

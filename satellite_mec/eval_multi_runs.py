@@ -21,7 +21,7 @@ except ImportError:
 
 from core import Config, SatelliteMECEnv
 from baselines import (LocalOnlyPolicy, GreedyDelayPolicy,
-                       LyapunovGreedyPolicy, MHSPOPolicy)
+                       LyapunovGreedyPolicy, MHSPOPolicy, GDCOPolicy)
 from training import MAPPOPolicy
 
 
@@ -112,10 +112,12 @@ def main():
         greedy_delay = GreedyDelayPolicy(cfg, env)
         lya_greedy   = LyapunovGreedyPolicy(cfg, env)
         mhspo        = MHSPOPolicy(cfg, env, rho_d=1.0, rho_e=1.0, V_lyapunov=10.0)
+        gdco         = GDCOPolicy(cfg, env)
         warmup_mhspo(env, mhspo, cfg.T_WARMUP)
         policies = [('LyaMAPPO', mappo), ('LocalOnly', local_only),
                     ('GreedyDelay', greedy_delay),
-                    ('LyapunovGreedy', lya_greedy), ('MHSPO', mhspo)]
+                    ('LyapunovGreedy', lya_greedy), ('MHSPO', mhspo),
+                    ('GDCO', gdco)]
     else:
         mhspo = MHSPOPolicy(cfg, env, rho_d=1.0, rho_e=1.0, V_lyapunov=10.0)
         warmup_mhspo(env, mhspo, cfg.T_WARMUP)

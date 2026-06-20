@@ -10,6 +10,7 @@ baselines/__init__.py
     LyapunovGreedyPolicy — Lyapunov 代价贪心（等同于 MAPPO 的确定性基准）
     MHSPOPolicy         — Zhang et al. TMC 2024 论文复现
     DOGDPredictor       — MHSPO 所用的工作负载预测器
+    GDCOPolicy          — Chen et al. TMC 2025 博弈论分布式卸载复现（势博弈 + NE）
 
 使用示例
 --------
@@ -31,6 +32,7 @@ from baselines.deterministic import (
     LyapunovGreedyPolicy,
 )
 from baselines.mhspo import MHSPOPolicy, DOGDPredictor
+from baselines.gdco import GDCOPolicy
 
 __all__ = [
     "LocalOnlyPolicy",
@@ -38,4 +40,5 @@ __all__ = [
     "LyapunovGreedyPolicy",
     "MHSPOPolicy",
     "DOGDPredictor",
+    "GDCOPolicy",
 ]
