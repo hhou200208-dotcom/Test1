@@ -155,6 +155,7 @@ class TD3SchedPolicy(PolicyInterface):
                  policy_freq: int = 2, expl_noise: float = 0.1,
                  batch_size: int = 256, start_steps: int = 2000,
                  updates_per_slot: int = 1, replay_size: int = 1_000_000,
+                 reward_scale: float = 0.1,
                  seed: int = 0, name: str = 'TD3Sched'):
         self.cfg  = config
         self.env  = env
@@ -184,6 +185,7 @@ class TD3SchedPolicy(PolicyInterface):
         self.policy_freq  = policy_freq;  self.expl_noise = expl_noise
         self.batch_size   = batch_size;   self.start_steps = start_steps
         self.updates_per_slot = updates_per_slot
+        self.reward_scale = reward_scale
 
         # reward 用 no-battery 代价（能耗 + 队列漂移，无电池/HL → 守 LyaMAPPO 护城河）
         self.cost_calc = LyapunovCalculator(config, use_battery_loss=False,
@@ -193,10 +195,12 @@ class TD3SchedPolicy(PolicyInterface):
         self._total_it   = 0      # critic 更新计数（延迟 actor 更新用）
         self._env_steps  = 0      # 收集到的转移数
 
-        # per-task 转移配对：act_one 暂存 (s, a_cont)，record_task_transition 取用
+        # per-task 转移配对：act_one 暂存 (s, a_cont)，record_task_transition 入槽缓冲
         self._last_state:  Optional[np.ndarray] = None
         self._last_a_cont: Optional[np.ndarray] = None
         self._pending: Optional[Tuple[np.ndarray, np.ndarray, float]] = None  # (s, a_cont, r)
+        # 槽级缓冲：(s, a_cont, action_cost, sat_id)；run_step 末尾分摊 outcome 后入回放
+        self._slot_tasks: List[Tuple[np.ndarray, np.ndarray, float, int]] = []
 
         self.learning_curve: List[Dict] = []
 
@@ -231,35 +235,51 @@ class TD3SchedPolicy(PolicyInterface):
             actions[n] = sat_actions
         return actions
 
-    # ── 转移收集：把 (s,a,r,s') 串成全局 per-task 流 ──────────
+    # ── 转移收集：槽级缓冲，run_step 末尾分摊 outcome 后串成 per-task 流 ──
     def record_task_transition(self, sat_id, slot_t, state, action,
                                log_prob, mask, task_reward) -> None:
         if self._eval_mode or self._last_a_cont is None:
             return
-        s_cur = np.asarray(state, dtype=np.float32)
-        # 上一条 pending 的 s' = 当前 task 的状态
-        if self._pending is not None:
-            ps, pa, pr = self._pending
-            self.replay.add(ps, pa, pr, s_cur, 0.0)
-            self._env_steps += 1
-        self._pending = (self._last_state, self._last_a_cont, float(task_reward))
+        # 仅缓冲 (s, a_cont, 该任务 action_cost, sat_id)；reward 待 env.step 返回 rewards 后定
+        self._slot_tasks.append((self._last_state, self._last_a_cont,
+                                 float(task_reward), int(sat_id)))
 
-    def on_episode_end(self) -> None:
-        """rollout episode 结束：收尾最后一条 pending（done=True）。"""
-        if self._eval_mode:
+    def _flush_slot(self, rewards: Dict, done: bool) -> None:
+        """把本槽缓冲任务的 reward 补成 action_cost + 分摊的 slot outcome，串入回放。
+
+        env(phase='train') 已把 outcome（完成/超时/拒绝/队列；W_HL=0 时无电池）注入 rewards[n]，
+        故 outcome_n = rewards[n] − Σ action_cost_n，按该星本槽任务数均摊回每个任务。
+        """
+        if not self._slot_tasks:
             return
-        if self._pending is not None:
+        sum_cost: Dict[int, float] = {}
+        count:    Dict[int, int]   = {}
+        for (_, _, ac, n) in self._slot_tasks:
+            sum_cost[n] = sum_cost.get(n, 0.0) + ac
+            count[n]    = count.get(n, 0) + 1
+        outcome = {n: float(rewards.get(n, 0.0)) - sum_cost[n] for n in count}
+        for (s, a_cont, ac, n) in self._slot_tasks:
+            r = (ac + outcome[n] / max(count[n], 1)) * self.reward_scale
+            if self._pending is not None:            # 上一条 pending 的 s' = 当前任务状态
+                ps, pa, pr = self._pending
+                self.replay.add(ps, pa, pr, s, 0.0)
+                self._env_steps += 1
+            self._pending = (s, a_cont, r)
+        self._slot_tasks = []
+        if done and self._pending is not None:       # rollout 结束收尾（terminal）
             ps, pa, pr = self._pending
             self.replay.add(ps, pa, pr, np.zeros(self.state_dim, np.float32), 1.0)
             self._env_steps += 1
             self._pending = None
 
+    def on_episode_end(self) -> None:                # 收尾逻辑已并入 _flush_slot
+        pass
+
     # ── 训练驱动：与 MAPPOPolicy.run_step 同签名，复用 ExperimentRunner ──
     def run_step(self, env) -> Tuple[Dict, bool, Dict]:
         _, rewards, done, info = env.step(policy=self)
         if not self._eval_mode:
-            if done:
-                self.on_episode_end()
+            self._flush_slot(rewards, done)
             for _ in range(self.updates_per_slot):
                 self._update()
         return rewards, done, info

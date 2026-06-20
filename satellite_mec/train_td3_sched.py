@@ -16,10 +16,12 @@ def main():
     ap.add_argument('--tag', type=str, default='16K')
     args = ap.parse_args()
     cfg = make_cfg(4.0)
+    cfg.W_HL = 0.0                              # outcome 也去电池：Huang 成本无电池健康项
     env = SatelliteMECEnv(cfg)
     td3 = TD3SchedPolicy(cfg, env)
     env.lyapunov_calc = td3.cost_calc           # 无电池奖励口径（守 HL 护城河）
-    print(f'[TD3] 训练 {args.t_train} 槽, λ=4, 无电池奖励, eval_every={args.eval_every}', flush=True)
+    print(f'[TD3] 训练 {args.t_train} 槽, λ=4, 无电池奖励(含outcome), '
+          f'eval_every={args.eval_every}', flush=True)
     env.reset(phase='train'); td3.set_train_mode()
     t0 = time.time()
     for t in range(args.t_train):
