@@ -52,6 +52,8 @@ def parse_args():
     p.add_argument('--w_hl',     type=float, default=None)
     p.add_argument('--w_timeout',type=float, default=None)
     p.add_argument('--w_reject', type=float, default=None)
+    p.add_argument('--v',        type=float, default=None,
+                   help='Lyapunov V trade-off override (default 50)')
     p.add_argument('--no_battery', action='store_true',
                    help='Ablation A2: 移除 reward 里的电池信号 (Lyapunov 电池项 + W_HL=0)，state 保留')
     p.add_argument('--skip_baselines', action='store_true',
@@ -73,6 +75,7 @@ def make_config(lh: float, args) -> Config:
     if args.w_hl     is not None: cfg.W_HL        = args.w_hl
     if args.w_timeout is not None: cfg.W_TIMEOUT  = args.w_timeout
     if args.w_reject is not None: cfg.W_REJECT    = args.w_reject
+    if args.v        is not None: cfg.V           = args.v
     return cfg
 
 
