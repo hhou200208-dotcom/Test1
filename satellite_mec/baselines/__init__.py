@@ -33,6 +33,7 @@ from baselines.deterministic import (
 )
 from baselines.mhspo import MHSPOPolicy, DOGDPredictor
 from baselines.gdco import GDCOPolicy
+# 注：TD3SchedPolicy 依赖 torch，按需从 baselines.td3_sched 直接导入，避免本包耦合 torch
 
 __all__ = [
     "LocalOnlyPolicy",

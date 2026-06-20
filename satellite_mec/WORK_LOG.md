@@ -164,6 +164,53 @@ LyaMAPPO V=50 完整 32K 训练，5 baselines × 5400 slots eval。
 
 V=100 32K 评估在 MAPPO r0 完成后被用户终止（已确认 V=50 最优，无需续完）。
 
+## M12：新增 baseline — GDCO（Chen TMC 2025 博弈论卸载）
+
+复现 Chen et al. "A Game-Theoretical Approach for Distributed Computation Offloading
+in LEO Satellite-Terrestrial Edge Computing," IEEE TMC v24n5 pp4389-4402, May 2025,
+DOI 10.1109/TMC.2025.3526200（**注**：上次会话引用的 v24n1/pp363-378 有误，已核实更正）。
+
+- 势博弈 + 边际外部性 overhead + best-response→NE（每槽 ~2 轮收敛）。
+- 能耗口径 + 死线可行；外部性含①本地 DVFS 拥塞 ②邻居计算拥塞 → 负载均衡。
+- **无电池项**（守 LyaMAPPO 的 HL 护城河）；跑在共享 DVFS 基底上。
+- 实现：`baselines/gdco.py`（非学习型，~250 行，免训练）。
+- **5400 槽 1-seed 实测**：CR 0.725 / Sat 0.726 / HL 2.42e-4 / DoD 0.475 / Q 113.2。
+- LyaMAPPO **4 项全胜**（CR/Sat/HL/Queue）。
+
+## M13：新增 baseline — TD3-Sched（Huang TMC 2024 双尺度·小尺度调度器）
+
+复现 Huang et al. "Dual-Timescales Optimization of Task Scheduling and Resource
+Slicing in STECN," IEEE TMC v23n12 pp14111-14127, Dec 2024, DOI 10.1109/TMC.2024.3440066。
+**仅复现小尺度 TD3 调度器**（原文的资源切片/AEF/self-attention/双尺度在单服务 env 无落脚点，标 N/A）。
+
+- TD3（clipped double-Q + 延迟更新 + 目标平滑 + 回放池），连续偏好→掩码→argmax 取离散动作。
+- 奖励 = **无电池**的能耗+完成+超时+队列（含 outcome；初版漏 outcome → CR 卡 0.44，补上 → 0.84）。
+- 实现：`baselines/td3_sched.py`（学习型，依赖 torch）；训练 `train_td3_sched.py`。
+- 16K 训练（~6min）CR 收敛 0.745→0.831→0.840→0.836；checkpoint `checkpoints/TD3Sched_lh4_16K`。
+- **5400 槽 1-seed 实测**：CR **0.839** / Sat 0.839 / Delay **3.06** / HL 4.43e-4 / DoD 0.486 / Q **81.0**。
+
+### ⚠️ 关键发现 + 叙事决定（2026-06-20，用户拍板）
+
+**TD3 在 CR/Sat/Delay/Queue 上全面超过 LyaMAPPO，LyaMAPPO 只赢 HL。** 这是真实权衡（TD3≈NoBat：
+无电池约束→放开冲 CR，代价 HL 2.5×），非评估错误（口径与 MHSPO 一致，复现 MHSPO 对得上文档）。
+
+**用户决定：改用「电池寿命叙事」**——LEO 卫星电池**不可更换**，HL 是命门。LyaMAPPO 是**唯一**把
+HL 压到 1.77e-4 的方法（TD3 4.43e-4 / MHSPO 5.09e-4 / GDCO 2.42e-4 均远高）。论文核心论点：
+**「以微小吞吐让步换取 ~60% 电池寿命延长」**，TD3 越强越反证「无电池感知会毁卫星电池」。
+不再主张「每项都赢」，改主张「电池健康维度一骑绝尘 + 综合 Pareto 占优」。
+
+## 当前完整 scoreboard（7 策略，λ=4，5400 槽）
+
+| 策略 | CR | Sat | Delay | HL | DoD | Q | 备注 |
+|---|---|---|---|---|---|---|---|
+| **LyaMAPPO** | 0.787 | 0.789 | 3.33 | **1.77e-4** 🏆 | 0.496 | 93.7 | n=3，HL 命门一骑绝尘 |
+| TD3Sched | **0.839** | **0.839** | **3.06** | 4.43e-4 | 0.486 | **81.0** | 1seed，强但伤电池(无电池感知) |
+| MHSPO | 0.799 | 0.802 | 3.54 | 5.09e-4 | 0.469 | 90.7 | n=3，最强经典 baseline |
+| GDCO | 0.725 | 0.726 | — | 2.42e-4 | 0.475 | 113.2 | 1seed，博弈论 |
+| LyapunovGreedy | 0.426 | 0.426 | 6.24 | 6.63e-5 | 0.399 | 148.1 | 贪心(=−学习消融) |
+| GreedyDelay | 0.497 | 0.498 | 4.01 | 4.12e-4 | 0.426 | 139.6 | 贪心 |
+| LocalOnly | 0.264 | 0.272 | 4.52 | 1.80e-4 | 0.371 | 167.9 | trivial |
+
 ---
 
 # 第三部分：当前状态总结

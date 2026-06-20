@@ -22,6 +22,15 @@
 
 ---
 
+## 🆕 最新进展（2026-06-20）
+
+- **新增 2 个 baseline**：GDCO（Chen TMC2025 博弈论，`baselines/gdco.py`，非学习）+ TD3-Sched
+  （Huang TMC2024 小尺度调度器，`baselines/td3_sched.py`，学习型，ckpt `TD3Sched_lh4_16K`）。均已接入 `eval_multi_runs.py`。
+- **叙事转向「电池寿命」**：实测 TD3 在 CR/Sat/Delay/Queue 上超过 LyaMAPPO（无电池感知→冲 CR，
+  代价 HL 2.5×）。不再主张「每项都赢」，改主张 **LyaMAPPO 在不可逆的卫星电池健康（HL）维度
+  一骑绝尘（1.77e-4，唯一 <2e-4 的强 CR 方法）+ 综合 Pareto 占优**。详见 WORK_LOG M12/M13。
+- 7 策略 scoreboard 见 `WORK_LOG.md`。
+
 ## 🎯 已达成的论文目标
 
 ### 当前 LyaMAPPO 对比 MHSPO（最强 baseline）

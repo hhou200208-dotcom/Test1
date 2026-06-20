@@ -22,6 +22,7 @@ except ImportError:
 from core import Config, SatelliteMECEnv
 from baselines import (LocalOnlyPolicy, GreedyDelayPolicy,
                        LyapunovGreedyPolicy, MHSPOPolicy, GDCOPolicy)
+from baselines.td3_sched import TD3SchedPolicy   # 学习型基线，依赖 torch，单独导入
 from training import MAPPOPolicy
 
 
@@ -118,6 +119,14 @@ def main():
                     ('GreedyDelay', greedy_delay),
                     ('LyapunovGreedy', lya_greedy), ('MHSPO', mhspo),
                     ('GDCO', gdco)]
+        # TD3-Sched（Huang TMC2024 学习型基线）：预训练模型存在则载入并加入对比
+        td3_ckpt = os.path.join(os.path.dirname(__file__), 'checkpoints', 'TD3Sched_lh4_16K')
+        if os.path.isdir(td3_ckpt):
+            td3 = TD3SchedPolicy(cfg, env)
+            td3.load(td3_ckpt)
+            policies.append(('TD3Sched', td3))
+        else:
+            print(f'[warn] TD3 checkpoint 不存在，跳过：{td3_ckpt}')
     else:
         mhspo = MHSPOPolicy(cfg, env, rho_d=1.0, rho_e=1.0, V_lyapunov=10.0)
         warmup_mhspo(env, mhspo, cfg.T_WARMUP)
