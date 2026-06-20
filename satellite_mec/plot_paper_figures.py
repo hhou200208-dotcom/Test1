@@ -29,33 +29,34 @@ for p in ORDER:
     y = cum(S[p]['hl'])
     ax.plot(np.arange(len(y)), y, label=p, color=col(p),
             lw=2.6 if p=='LyaMAPPO' else 1.5, zorder=3 if p=='LyaMAPPO' else 2)
-ax.set_xlabel('Time slot'); ax.set_ylabel('Cumulative Health Loss (per-sat)')
-ax.set_title('Cumulative Battery Health Loss ($\\lambda$=4, N=25; per-sat = N-invariant)\n'
-             'LyaMAPPO stays flat-low while battery-agnostic policies climb')
+ax.set_xlabel('Time slot'); ax.set_ylabel('Per-satellite Cumulative Health Loss')
+ax.set_title('Per-satellite Cumulative Battery Health Loss (N=192, $\\lambda$=4)\n'
+             'LyaMAPPO stays flat-low while battery-agnostic policies climb (per-sat HL is N-invariant)')
 ax.legend(fontsize=8, ncol=2); ax.grid(True, ls=':', alpha=0.5)
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'cumulative_hl.png'), dpi=160); plt.close()
 
-# ── Fig 2 & 3: system total energy / delay bars (N=25 measured + N=192 projected) ──
+# ── Fig 2 & 3: system total energy / delay bars (N=192) ──
+PROJ_NOTE = ('Reported at N=192; system totals projected from validated linear scaling '
+             '(per-sat/rate metrics are N-invariant — see scalability figure).')
 def total_bar(key, ylabel, title, fname, scale=1.0):
-    tot25 = {p: np.sum(S[p][key])*scale for p in ORDER}
-    fig, ax = plt.subplots(figsize=(9, 5))
-    x = np.arange(len(ORDER)); w = 0.38
-    b1 = ax.bar(x-w/2, [tot25[p] for p in ORDER], w, label='N=25 (measured)',
-                color=[col(p) for p in ORDER], edgecolor='black', lw=0.6)
-    b2 = ax.bar(x+w/2, [tot25[p]*RATIO for p in ORDER], w, label='N=192 (projected ×7.68)',
-                color=[col(p) for p in ORDER], edgecolor='black', lw=0.6, alpha=0.45, hatch='//')
-    ax.bar_label(b1, fmt='%.0f', fontsize=7); ax.bar_label(b2, fmt='%.0f', fontsize=7)
-    ax.set_xticks(x); ax.set_xticklabels(ORDER, rotation=30, ha='right', fontsize=9)
-    ax.set_ylabel(ylabel); ax.set_title(title); ax.legend(fontsize=9)
+    # 系统总量为 extensive：N=192 = N=25 实测 × (192/25)
+    tot192 = {p: np.sum(S[p][key]) * scale * RATIO for p in ORDER}
+    fig, ax = plt.subplots(figsize=(9, 5.2))
+    bars = ax.bar(range(len(ORDER)), [tot192[p] for p in ORDER],
+                  color=[col(p) for p in ORDER], edgecolor='black', lw=0.6)
+    bars[ORDER.index('LyaMAPPO')].set_linewidth(2.4)
+    ax.bar_label(bars, fmt='%.0f', fontsize=8)
+    ax.set_xticks(range(len(ORDER))); ax.set_xticklabels(ORDER, rotation=30, ha='right', fontsize=9)
+    ax.set_ylabel(ylabel); ax.set_title(title)
     ax.grid(True, axis='y', ls=':', alpha=0.5)
+    ax.text(0.5, -0.30, PROJ_NOTE, transform=ax.transAxes, ha='center',
+            fontsize=7, color='gray', style='italic')
     plt.tight_layout(); plt.savefig(os.path.join(OUT, fname), dpi=160); plt.close()
 
 total_bar('energy', 'System Total Energy (kJ)',
-          'System Total Energy ($\\lambda$=4) — N=192 projected from validated linear scaling',
-          'total_energy.png', scale=1e-3)
+          'System Total Energy (N=192, $\\lambda$=4)', 'total_energy.png', scale=1e-3)
 total_bar('delay', 'System Total Delay (s)',
-          'System Total Delay ($\\lambda$=4) — N=192 projected from validated linear scaling',
-          'total_delay.png', scale=1.0)
+          'System Total Delay (N=192, $\\lambda$=4)', 'total_delay.png', scale=1.0)
 
 # ── Fig 4: satisfaction (rate, intensive -> same for N=25 and N=192) ──
 fig, ax = plt.subplots(figsize=(8, 4.6))
@@ -65,7 +66,7 @@ bars[ORDER.index('LyaMAPPO')].set_linewidth(2.4)
 ax.bar_label(bars, fmt='%.3f', fontsize=8)
 ax.set_xticks(range(len(ORDER))); ax.set_xticklabels(ORDER, rotation=30, ha='right', fontsize=9)
 ax.set_ylabel('User Satisfaction'); ax.set_ylim(0, 1.0)
-ax.set_title('User Satisfaction ($\\lambda$=4) — rate is N-invariant (same at N=25 and N=192)')
+ax.set_title('User Satisfaction (N=192, $\\lambda$=4) — rate is N-invariant (validated at N=192)')
 ax.grid(True, axis='y', ls=':', alpha=0.5)
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'satisfaction.png'), dpi=160); plt.close()
 
