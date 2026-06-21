@@ -40,7 +40,7 @@ ax.text(0.66, ymax*0.16, 'better satisfaction →', fontsize=9, color='gray')
 ax.text(0.255, ymax*0.55, 'lower HL\n(better) ↓', fontsize=9, color='gray')
 ax.set_xlabel('Satisfaction  (satisfied / (done + timeout))', fontsize=11)
 ax.set_ylabel('Battery Health Loss  HL  (×10$^{-4}$ / slot)', fontsize=11)
-ax.set_title('Pareto: Satisfaction vs Battery Health Loss (N=192, $\\lambda$=4)\n'
+ax.set_title('Pareto: Satisfaction vs Battery Health Loss (N=192)\n'
              'LyaMAPPO uniquely occupies the low-HL frontier (rate/per-sat metrics N-invariant)', fontsize=12)
 ax.set_ylim(0, ymax); ax.set_xlim(0.20, 0.92)
 ax.grid(True, ls=':', alpha=0.5)
@@ -50,7 +50,7 @@ plt.tight_layout(); plt.savefig(os.path.join(OUT, 'pareto_sat_hl.png'), dpi=160)
 metrics = [('satisfaction', 'Satisfaction (higher better)',      1.0, '{:.3f}'),
            ('delay',        'E2E Delay (s, lower better)',        1.0, '{:.2f}'),
            ('hl',           'Battery Health Loss (×10$^{-4}$, lower better)', 1e4, '{:.2f}'),
-           ('queue_tasks',  'Queue Backlog (tasks/sat, lower better)', 1.0, '{:.1f}')]
+           ('queue_tasks',  'System Queue Backlog (total tasks, lower better)', 192, '{:.0f}')]
 fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 for ax, (key, title, scale, fmt) in zip(axes.flat, metrics):
     vals = [res[p][key] * scale for p in ORDER]
@@ -63,7 +63,7 @@ for ax, (key, title, scale, fmt) in zip(axes.flat, metrics):
     ax.set_xticklabels([disp(p) for p in ORDER], rotation=30, ha='right', fontsize=9)
     ax.set_title(title, fontsize=11)
     ax.grid(True, axis='y', ls=':', alpha=0.5)
-fig.suptitle('7-Policy Comparison (N=192, $\\lambda$=4, 5400 slots) — LyaMAPPO dominates on HL', fontsize=13)
+fig.suptitle('7-Policy Comparison (N=192, 5400 slots) — LyaMAPPO dominates on HL', fontsize=13)
 plt.tight_layout(); plt.savefig(os.path.join(OUT, 'bars_4metrics.png'), dpi=160); plt.close()
 
 print('Figures written:')

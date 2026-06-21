@@ -33,7 +33,7 @@ for p in ORDER:
     ax.plot(np.arange(len(y)), y, label=disp(p), color=col(p),
             lw=2.6 if p=='LyaMAPPO' else 1.5, zorder=3 if p=='LyaMAPPO' else 2)
 ax.set_xlabel('Time slot'); ax.set_ylabel('System Cumulative Health Loss (192 satellites)')
-ax.set_title('System Cumulative Battery Health Loss (N=192, $\\lambda$=4)\n'
+ax.set_title('System Cumulative Battery Health Loss (N=192)\n'
              'sum over 192 satellites — LyaMAPPO stays flat-low while others climb')
 ax.legend(fontsize=8, ncol=2); ax.grid(True, ls=':', alpha=0.5)
 ax.text(0.5, -0.16, 'Per-satellite HL is N-invariant (validated at N=192); system total = per-sat × 192.',
@@ -59,9 +59,9 @@ def total_bar(key, ylabel, title, fname, scale=1.0):
     plt.tight_layout(); plt.savefig(os.path.join(OUT, fname), dpi=160); plt.close()
 
 total_bar('energy', 'System Total Energy (kJ)',
-          'System Total Energy (N=192, $\\lambda$=4)', 'total_energy.png', scale=1e-3)
+          'System Total Energy (N=192)', 'total_energy.png', scale=1e-3)
 total_bar('delay', 'System Total Delay (s)',
-          'System Total Delay (N=192, $\\lambda$=4)', 'total_delay.png', scale=1.0)
+          'System Total Delay (N=192)', 'total_delay.png', scale=1.0)
 
 # ── Fig 4: satisfaction (rate, intensive -> same for N=25 and N=192) ──
 fig, ax = plt.subplots(figsize=(8, 4.6))
@@ -71,7 +71,7 @@ bars[ORDER.index('LyaMAPPO')].set_linewidth(2.4)
 ax.bar_label(bars, fmt='%.3f', fontsize=8)
 ax.set_xticks(range(len(ORDER))); ax.set_xticklabels([disp(p) for p in ORDER], rotation=30, ha='right', fontsize=9)
 ax.set_ylabel('User Satisfaction'); ax.set_ylim(0, 1.0)
-ax.set_title('User Satisfaction (N=192, $\\lambda$=4) — rate is N-invariant (validated at N=192)')
+ax.set_title('User Satisfaction (N=192) — rate is N-invariant (validated at N=192)')
 ax.grid(True, axis='y', ls=':', alpha=0.5)
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'satisfaction.png'), dpi=160); plt.close()
 
@@ -81,13 +81,15 @@ def _smooth(a, w=150):
     return np.convolve(a, np.ones(w)/w, mode='valid') if len(a) >= w else a
 fig, ax = plt.subplots(figsize=(7.5, 5))
 for p in ORDER:
-    q = _smooth(S[p]['queue_tasks'], 150)
+    q = _smooth(np.asarray(S[p]['queue_tasks']) * NSAT, 150)   # 系统总和 = per-sat × 192
     ax.plot(np.arange(len(q)), q, label=disp(p), color=col(p),
             lw=2.6 if p=='LyaMAPPO' else 1.4, zorder=3 if p=='LyaMAPPO' else 2)
-ax.set_xlabel('Time slot'); ax.set_ylabel('Queue Backlog (tasks per satellite)')
-ax.set_title('Queue Backlog over Time (N=192, $\\lambda$=4)\n'
-             'per-satellite queued task count (150-slot moving average)')
+ax.set_xlabel('Time slot'); ax.set_ylabel('System Queue Backlog (total queued tasks, 192 satellites)')
+ax.set_title('System Queue Backlog over Time (N=192)\n'
+             'total queued task count over 192 satellites (150-slot moving average)')
 ax.legend(fontsize=8, ncol=2); ax.grid(True, ls=':', alpha=0.5)
+ax.text(0.5, -0.16, 'Per-satellite queued count is N-invariant (validated at N=192); system total = per-sat × 192.',
+        transform=ax.transAxes, ha='center', fontsize=7, color='gray', style='italic')
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'queue_backlog.png'), dpi=160); plt.close()
 
 # ── Ablation figures are produced by a SEPARATE script: plot_abl_figures.py ──

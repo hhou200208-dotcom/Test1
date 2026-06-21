@@ -250,6 +250,11 @@ HL 压到 1.77e-4 的方法（TD3 4.43e-4 / MHSPO 5.09e-4 / GDCO 2.42e-4 均远�
 - ⚠️ **超参口径提醒**：图用**定稿值**，与 `config.py` 默认值不同（默认 W_DONE=5/W_HL=10/
   BETA=0.15/λ=2.5；定稿由训练 CLI 覆盖，checkpoint 即定稿值）——已在脚本/`.tex` 注释标明。
 
+### 图表润色（2026-06-21，用户要求）
+- **结果图标题统一去掉 `λ=4`**（只留 `N=192`，更干净）：改 `plot_paper_figures.py` / `plot_paper_satisfaction.py` / `plot_pdf_figures.py`（消融/敏感性图本来就没 λ 标注）。架构图的 `λ_hi=4.0/λ_lo=0.1` 是**系统模型参数标注**（非冗余标题），保留。
+- **队列积压改成"全系统总任务个数"**：`queue_tasks` 是 per-sat（`avg_queue_tasks=(n_fwd+n_cmp)/N_SATS`，env 实证），现 ×192 = 系统总和（与累计 HL 同口径）。改了 `queue_backlog`（时间曲线）+ `bars_4metrics`（柱）。LyaMAPPO ≈ 546 tasks（MHSPO 544 / TD3 485 / GDCO 695 / LSO 1067）。
+- ⚠️ 注意：`25_v_queue`（V 敏感性）数据只存了 `queue_mb`（MB/星），无任务个数；要改任务个数得**重跑 V 扫描**，暂保留 MB 口径。
+
 ---
 
 # 第三部分：当前状态总结

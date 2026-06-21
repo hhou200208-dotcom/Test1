@@ -53,12 +53,12 @@ PROJ = 'System totals reported at N=192 (projected from validated linear scaling
 # ── system delay overhead distribution (per-slot system total delay, N=192) ──
 delay = {p: np.asarray(S[p]['delay']) * RATIO for p in ORDER}
 kde_fig(delay, 'System delay overhead (s)',
-        'Distribution of System Delay Overhead (N=192, $\\lambda$=4)', 'delay_pdf.png', PROJ)
+        'Distribution of System Delay Overhead (N=192)', 'delay_pdf.png', PROJ)
 
 # ── system energy overhead distribution (per-slot system energy, N=192, kJ) ──
 energy = {p: np.asarray(S[p]['energy']) * RATIO / 1e3 for p in ORDER}
 kde_fig(energy, 'System energy overhead (kJ)',
-        'Distribution of System Energy Overhead (N=192, $\\lambda$=4)', 'energy_pdf.png', PROJ)
+        'Distribution of System Energy Overhead (N=192)', 'energy_pdf.png', PROJ)
 
 # ── user satisfaction distribution (per-slot rate, active slots only; N-invariant) ──
 sat = {}
@@ -66,7 +66,7 @@ for p in ORDER:
     s = np.asarray(S[p]['sat_slot'], float); d = np.asarray(S[p]['sat_denom'], float)
     sat[p] = s[d > 0]
 kde_fig(sat, 'Satisfaction',
-        'Distribution of User Satisfaction (N=192, $\\lambda$=4)', 'satisfaction_pdf.png')
+        'Distribution of User Satisfaction (N=192)', 'satisfaction_pdf.png')
 
 print('PDF figures written:')
 for f in ['delay_pdf', 'energy_pdf', 'satisfaction_pdf']:

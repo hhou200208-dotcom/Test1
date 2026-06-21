@@ -30,7 +30,7 @@ satellite_mec/docs/figures_paper/          # 14 张论文图（已做好）
 **已完成**：
 1. **2 个新 baseline**：GDCO（Chen TMC2025 博弈论，`baselines/gdco.py`，非学习）+ TD3-Sched（Huang TMC2024 小尺度调度器，`baselines/td3_sched.py`，学习型，ckpt `TD3Sched_lh4_16K`）。
 2. **叙事定稿=电池寿命**：LyaMAPPO 赢整个电池维度（系统累计 HL ~180 vs MHSPO 527/TD3 460，约 1/3；系统能耗 912kJ@N25 最低）。TD3 在满意度/时延上更强→走 Pareto + 电池命门叙事。
-3. **指标口径**：主指标=**满意度**（CR 仅内部）；DoD 不进结果图（只 setup 披露，Saft VES16 30-50% 背书）；累计 HL=**系统总和(×192)**；队列=**任务个数**。
+3. **指标口径**：主指标=**满意度**（CR 仅内部）；DoD 不进结果图（只 setup 披露，Saft VES16 30-50% 背书）；累计 HL=**系统总和(×192)**；队列=**系统总任务个数(per-sat×192)**。结果图标题已去掉 λ=4（只留 N=192，更干净）。
 4. **N=192 框架**：实测验证 N-不变性（同 ckpt 跑通 192 颗）；系统总量×(192/25)投影、率不变；`scalability.png` 是验证图。
 5. **14 张图**（`docs/figures_paper/`）：
    - 对比(LyaMAPPO/TD3/MHSPO/GDCO/**LSO**)：pareto · bars_4metrics · cumulative_hl · queue_backlog · satisfaction(+_pdf) · total_energy(+energy_pdf) · total_delay(+delay_pdf) · scalability
