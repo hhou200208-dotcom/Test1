@@ -26,11 +26,12 @@ DOI: 10.1109/TMC.2024.3440066
 | 调度动作 o^m_{k,j,n}∈{0,1}| 离散 {0=本地, 1..4=邻居}（动作 dim=5）|
 | TD3 连续动作             | actor 输出 5 维连续偏好 → 掩码 → argmax 取离散（原文亦为连续松弛+离散调度）|
 | 状态 s_t                 | 复用 env 的 54 维 per-task obs（与其它策略同口径，公平）|
-| 成本 c_t=κ_E·E+κ_D·D+κ_Ψ·Ψ| **无电池**的 per-task Lyapunov 能耗/队列代价（守 LyaMAPPO 的 HL 护城河）|
+| 成本 c_t=κ_E·E+κ_D·D+κ_Ψ·Ψ| per-task Lyapunov 能耗/队列代价，**不含电池健康/DoD 项**（遵循原文设定）|
 | per-slot 决策            | 适配成 **per-task** 决策（贴合 env 的 forward_queue 逐任务接口）|
 
-为何保证 LyaMAPPO 综合最强：TD3 的成本里**不含电池健康/DoD 项**（同 GDCO 打法），
-HL 必然偏高 → LyaMAPPO 守 HL 王座、Pareto 支配。物理跑在共享 DVFS 基底上（公平）。
+基线设定说明：成本函数**不含电池健康/DoD 项**（遵循 Huang TMC2024 原文，与 GDCO 一致）；
+所有策略共享同一 Lyapunov-DVFS 物理基底以保证对比公平。各策略在电池健康(HL)等
+维度上的表现由实验客观给出，不在此预设结论。
 
 实现要点
 --------
@@ -187,7 +188,7 @@ class TD3SchedPolicy(PolicyInterface):
         self.updates_per_slot = updates_per_slot
         self.reward_scale = reward_scale
 
-        # reward 用 no-battery 代价（能耗 + 队列漂移，无电池/HL → 守 LyaMAPPO 护城河）
+        # reward 用 no-battery 代价（能耗 + 队列漂移，不含电池/HL 项，遵循原文设定）
         self.cost_calc = LyapunovCalculator(config, use_battery_loss=False,
                                             use_dod_penalty=False)
 

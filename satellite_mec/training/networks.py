@@ -316,7 +316,7 @@ class RolloutBuffer:
 
         # Stage 6：per-task advantage = slot_advantage + β · (task_r − slot_mean_task_r)
         # 同一 (sat, slot) 内任务 task_reward 的相对偏差给出局部信用
-        beta_task = 0.5
+        beta_task = self.cfg.BETA_TASK
         # 按 (sat, slot) 分组算平均 task_reward
         tasks_by_slot: Dict[Tuple[int, int], List[TaskRecord]] = {}
         for tr in self._task_records:

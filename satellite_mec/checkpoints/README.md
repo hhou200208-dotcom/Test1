@@ -72,6 +72,38 @@ print('CR:', env.get_eval_completion_rate())
 | Total update_count | 125 |
 | Commit producing this | `8d91fcf` (ablation no-battery + plotting) |
 
+### TD3Sched_lh4_16K (baseline, learned)
+
+| field | value |
+|---|---|
+| Training scenario | λ_high = 4.0 |
+| Training steps | 16 000 slots |
+| Reward | no-battery Lyapunov cost (energy + queue drift; **no z_n / HL term**, per Huang TMC2024) |
+| Final eval satisfaction | 0.837 |
+| Final eval HL/slot | 4.43e-4 |
+
+## ⚠️ Exact training commands (finalized hyperparameters)
+
+**`config.py` defaults are NOT the finalized paper values** (defaults: `W_DONE=5,
+W_HL=10, BETA=0.15, LAMBDA_HIGH=2.5`). The checkpoints were trained with the CLI
+overrides below — these commands are the authoritative reproduction recipe.
+
+```bash
+# LyaMAPPO_lh4_32K (proposed)  — V=50, η=0.5, β_task=0.5 (config defaults), entropy β=0.02
+python train_mappo_lambda4.py --t_train 32000 --v 50 --beta 0.02 \
+    --w_done 10 --w_hl 2 --w_timeout 5 --w_reject 5 --n_runs 1 --tag lh4_32K
+
+# MAPPO_NoBat_lh4_8K (ablation) — identical EXCEPT --no_battery
+#   NOTE: --no_battery removes BOTH the Lyapunov battery/DoD action-cost AND sets
+#   W_HL=0 (outcome HL reward). It is therefore a combined battery-ablation, not a
+#   single-term ablation (disclosed; see WORK_LOG / paper ablation caveat).
+python train_mappo_lambda4.py --t_train 8000 --v 50 --beta 0.02 \
+    --w_done 10 --w_timeout 5 --w_reject 5 --no_battery --n_runs 1 --tag lh4_8K_nobat
+
+# TD3Sched_lh4_16K (baseline)
+python train_td3_sched.py --t_train 16000 --tag 16K
+```
+
 ## Reproducing the paper headline result
 
 ```bash

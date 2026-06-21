@@ -102,6 +102,7 @@ class Config:
     MINIBATCH: int = 64
     EPOCH: int = 2
     K_ROLLOUT: int = 64                                 # rollout步长
+    BETA_TASK: float = 0.5                              # 任务级优势分解系数 A_task=A_slot+β·(r−r̄)/σ（定稿值）
 
     # ── 实验控制 ──────────────────────────────────────────────
     EVAL_INTERVAL: int = 15                             # 每隔多少次update做一次快速评估
