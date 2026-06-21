@@ -265,6 +265,12 @@ class Constellation:
         stats['slot_system_energy']       = float(comp_e + trans_e)
         stats['slot_system_energy_comp']  = float(comp_e)
         stats['slot_system_energy_trans'] = float(trans_e)
+        # 队列积压（任务个数，per-sat 平均；与字节口径 avg_qf/qb_size 对应的"个数版"）
+        n_fwd = sum(len(sat.forward_queue) for sat in self.satellites)
+        n_cmp = sum(len(sat.compute_queue) for sat in self.satellites)
+        stats['avg_queue_tasks']   = float((n_fwd + n_cmp) / self.cfg.N_SATS)
+        stats['avg_qf_tasks']      = float(n_fwd / self.cfg.N_SATS)
+        stats['avg_qb_tasks']      = float(n_cmp / self.cfg.N_SATS)
         stats.update(self.get_health_stats())
         return stats
 

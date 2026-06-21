@@ -7,7 +7,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-DATA = '/tmp/scoreboard7.json'
+DATA = os.path.join(os.path.dirname(__file__), 'docs', 'scoreboard7_lh4.json')
 OUT  = os.path.join(os.path.dirname(__file__), 'docs', 'figures_paper')
 os.makedirs(OUT, exist_ok=True)
 res = json.load(open(DATA))
@@ -48,7 +48,7 @@ plt.tight_layout(); plt.savefig(os.path.join(OUT, 'pareto_sat_hl.png'), dpi=160)
 metrics = [('satisfaction', 'Satisfaction (higher better)',      1.0, '{:.3f}'),
            ('delay',        'E2E Delay (s, lower better)',        1.0, '{:.2f}'),
            ('hl',           'Battery Health Loss (×10$^{-4}$, lower better)', 1e4, '{:.2f}'),
-           ('queue_mb',     'Queue Backlog (MB, lower better)',   1.0, '{:.0f}')]
+           ('queue_tasks',  'Queue Backlog (tasks/sat, lower better)', 1.0, '{:.1f}')]
 fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 for ax, (key, title, scale, fmt) in zip(axes.flat, metrics):
     vals = [res[p][key] * scale for p in ORDER]

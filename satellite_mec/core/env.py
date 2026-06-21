@@ -295,7 +295,10 @@ class SatelliteMECEnv(EnvInterface):
             'slot_system_energy':       stats.get('slot_system_energy', 0.0),       # J/槽，系统总能耗
             'slot_system_energy_comp':  stats.get('slot_system_energy_comp', 0.0),
             'slot_system_energy_trans': stats.get('slot_system_energy_trans', 0.0),
-            'total_queue_size':  stats['avg_qf_size'] + stats['avg_qb_size'],
+            'total_queue_size':  stats['avg_qf_size'] + stats['avg_qb_size'],       # 字节口径(MB)
+            'queue_task_count':  stats.get('avg_queue_tasks', 0.0),                 # 任务个数口径(per-sat)
+            'qf_task_count':     stats.get('avg_qf_tasks', 0.0),
+            'qb_task_count':     stats.get('avg_qb_tasks', 0.0),
             'reward_ledger':     ledger,    # 诊断：每 slot reward 组成
             'per_sat_dod':      [sat.dod for sat in self.constellation.satellites],
             'episode_arrived':   self.episode_arrived,
