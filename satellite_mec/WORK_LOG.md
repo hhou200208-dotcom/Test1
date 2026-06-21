@@ -228,7 +228,27 @@ HL 压到 1.77e-4 的方法（TD3 4.43e-4 / MHSPO 5.09e-4 / GDCO 2.42e-4 均远�
 | **N=192 验证（已跑）** | 同 checkpoint 在 16×12=192 真跑 500 槽：满意度/HL/DoD 率≈25 颗（LyaMAPPO Sat 0.776 vs 0.787）→ 实锤可扩展性创新#4 + N-不变性。`scalability.png` 即此验证。|
 | **N=25 原始数据** | **保留**（`docs/series_lh4_n25.json` / `scoreboard7_lh4.json` / checkpoints）作为 N=192 投影的证据后盾，不进正文、**绝不删**（删=无据编造=撤稿）。|
 | **新发现：能耗双赢** | LyaMAPPO 系统总能耗 **912 kJ**（N=25），强策略**最低**（MHSPO 1692/TD3 1583/NoBat 1728，省一半）。叙事升级：LyaMAPPO 赢**整个电池维度**（HL −66% + 能耗 −46%），非仅 HL。|
-| **图库（docs/figures_paper/）** | pareto_sat_hl, bars_4metrics, cumulative_hl⭐, total_energy, total_delay, satisfaction, ablation, scalability（共 8 张，均 N=192 框架）|
+| **图库（docs/figures_paper/）** | pareto_sat_hl, bars_4metrics, cumulative_hl⭐, total_energy, total_delay, satisfaction, ablation, scalability（N=192 框架）**+ arch_system_model / arch_lyamappo_framework**（架构图，M14）|
+
+## M14：论文架构图（系统模型图 + LyaMAPPO 框架图）
+
+按 `docs/ARCHITECTURE_DIAGRAMS_SPEC.md` 出 2 张架构图，参数**全部对代码核实**
+（Actor 54 维 / Critic 245 维 / action 5 / V=50 / η=0.5 / 定稿奖励权重 10·5·5·2·0.05 /
+β_task=0.5 / DVFS `f*=√(Q^B/3·V_DVFS·κ)` 钳到 [0,F_max] / `HL=δ·10^{a(δ-1)}`）。
+
+- **双格式交付**：
+  - matplotlib：`plot_arch_figures.py` → `docs/figures_paper/arch_system_model.png` +
+    `arch_lyamappo_framework.png`（dpi=160，融入现有出图流水线，**已跑通**）。
+  - TikZ 投稿源：`docs/tikz/arch_system_model.tex` + `arch_lyamappo_framework.tex`
+    （**pdflatex 实编通过**，TeX Live 2023；编译产物 `.pdf` 入库，`.aux/.log` 已 gitignore）。
+- **图 1 系统模型**（物理基底，无创新编号）：(a) 星座+ISL+太阳/地影 → (b) 单星管线
+  （到达→Q^F→卸载决策 a∈{0..4}→Q^B→DVFS CPU→完成 / ISL 转发）→ (c) 电池循环
+  （太阳→电池→放电 κf³τ+P_T·D/R→HL）；3 类流（任务/能量/广播）图例。
+- **图 2 LyaMAPPO 框架（CTDE）**：环境(三队列含 z_n) → Lyapunov 奖励构造(drift+penalty+outcome)
+  → Actor(54d,分布式执行) / Critic(245d,中心化训练) → PPO(GAE+任务级优势)；CTDE 上下双带；
+  **7 创新点 ★1–7** 贴对应模块。
+- ⚠️ **超参口径提醒**：图用**定稿值**，与 `config.py` 默认值不同（默认 W_DONE=5/W_HL=10/
+  BETA=0.15/λ=2.5；定稿由训练 CLI 覆盖，checkpoint 即定稿值）——已在脚本/`.tex` 注释标明。
 
 ---
 

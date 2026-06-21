@@ -38,6 +38,10 @@ satellite_mec/docs/figures_paper/          # 14 张论文图（已做好）
    - 原始数据：`docs/series_lh4_n25.json`(逐槽) + `docs/scoreboard7_lh4.json`(标量)
    - 出图脚本：`plot_paper_figures.py`(对比) · `plot_paper_satisfaction.py`(pareto+柱状) · `plot_pdf_figures.py`(PDF) · `plot_abl_figures.py`(消融)
    - 重跑评估：`eval_series.py`(逐槽,8策略) · `eval_all7_scalars.py`
+6. **架构图 2 张**（M14）：
+   - PNG（matplotlib，**已跑通**）：`docs/figures_paper/arch_system_model.png` · `arch_lyamappo_framework.png`
+   - TikZ 投稿源（**pdflatex 编译通过**，含 `.pdf`）：`docs/tikz/arch_system_model.tex` · `arch_lyamappo_framework.tex`
+   - 脚本 `plot_arch_figures.py`；参数全对代码核实（54/245 维 · V=50 · 定稿权重 · DVFS 闭式解）；图 2 贴 ★1–7 创新点
 
 **命名**：LocalOnly→显示 **LSO**；MAPPO_NoBat→显示 **MAPPO-NoDOD**（数据/ckpt key 不变，只图标签映射）；GreedyDelay 已从图中删除。
 
@@ -47,8 +51,8 @@ satellite_mec/docs/figures_paper/          # 14 张论文图（已做好）
 - **N=25 原始数据/checkpoint 保留作 N=192 投影证据，绝不删**
 
 ## 下一步（待办）
-1. **画 2 张架构图**：系统模型图 + LyaMAPPO 框架图 → 构图清单已在 `docs/ARCHITECTURE_DIAGRAMS_SPEC.md`（可让我转成 draw.io 文本 / TikZ 骨架）
-2. **论文写作**：experiment 章节（图都齐）、GDCO/TD3 baseline 描述段、电池叙事写进 intro/method
+1. **论文写作**：experiment 章节（图都齐，**含 2 张架构图**）、GDCO/TD3 baseline 描述段、电池叙事写进 intro/method
+2. 架构图微调（按需）：连线/配色/标签可再调；TikZ 已编译通过，可直接 `\includegraphics` 进论文
 3. 可选：满意度时间曲线、训练收敛曲线
 
 ## 复现命令
@@ -60,7 +64,10 @@ pip install numpy torch scipy matplotlib pypdf
 python eval_series.py
 # 出图
 python plot_paper_figures.py && python plot_paper_satisfaction.py && \
-python plot_pdf_figures.py && python plot_abl_figures.py
+python plot_pdf_figures.py && python plot_abl_figures.py && python plot_arch_figures.py
+# 架构图 TikZ（投稿质量，需 texlive）：
+#   apt-get install -y texlive-latex-base texlive-latex-extra texlive-pictures
+cd docs/tikz && pdflatex arch_system_model.tex && pdflatex arch_lyamappo_framework.tex && cd ../..
 # 训 TD3
 python train_td3_sched.py --t_train 16000 --tag 16K
 ```
