@@ -17,15 +17,17 @@ env=SatelliteMECEnv(cfg)
 series={}; scalar={}
 def cap(pol,label):
     env.reset(phase='eval',seeds=cfg.get_eval_seeds(0)); pol.set_eval_mode()
-    E=[]; D=[]; H=[]; Q=[]; dod=[]; qmb=[]; alld=[]; t0=time.time()
+    E=[]; D=[]; H=[]; Q=[]; SAT=[]; DEN=[]; dod=[]; qmb=[]; alld=[]; t0=time.time()
     for _ in range(cfg.T_EVAL):
         _,_,_,info=env.step(policy=pol)
         E.append(info['slot_system_energy']); D.append(sum(info['slot_e2e_delays']))
         H.append(info['avg_health_loss']);    Q.append(info['queue_task_count'])
+        SAT.append(info['slot_satisfaction_rate']); DEN.append(info['done_tasks']+info['slot_timeout'])
         dod.append(info['avg_dod']);          qmb.append(info['total_queue_size']/1e6)
         alld.extend(info['slot_e2e_delays'])
     sat=float(info.get('eval_satisfaction_rate',float('nan')))
-    series[label]={'satisfaction':sat,'energy':E,'delay':D,'hl':H,'queue_tasks':Q}
+    series[label]={'satisfaction':sat,'energy':E,'delay':D,'hl':H,'queue_tasks':Q,
+                   'sat_slot':SAT,'sat_denom':DEN}
     scalar[label]={'satisfaction':sat,'delay':float(np.mean(alld)) if alld else 0.0,
                    'hl':float(np.mean(H)),'dod':float(np.mean(dod)),
                    'queue_mb':float(np.mean(qmb)),'queue_tasks':float(np.mean(Q)),
