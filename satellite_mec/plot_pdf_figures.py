@@ -21,7 +21,7 @@ COLOR = {'LyaMAPPO':'#d62728','TD3Sched':'#1f77b4','MHSPO':'#2ca02c','GDCO':'#94
 MARK  = {'LyaMAPPO':'s','TD3Sched':'o','MHSPO':'^','GDCO':'P','GreedyDelay':'D',
          'LyapunovGreedy':'v','LocalOnly':'*'}
 
-def kde_fig(vals, xlabel, title, fname, note=None):
+def kde_fig(vals, xlabel, title, fname, note=None, smooth=2.2):
     allv = np.concatenate([np.asarray(v, float) for v in vals.values()])
     allv = allv[np.isfinite(allv)]
     lo, hi = np.percentile(allv, 0.3), np.percentile(allv, 99.7)
@@ -31,7 +31,8 @@ def kde_fig(vals, xlabel, title, fname, note=None):
         v = np.asarray(vals[p], float); v = v[np.isfinite(v)]
         if len(v) < 10 or v.std() < 1e-9:
             continue
-        ys = gaussian_kde(v)(xs)
+        kde = gaussian_kde(v); kde.set_bandwidth(kde.factor * smooth)   # 加大带宽 → 更平滑
+        ys = kde(xs)
         big = (p == 'LyaMAPPO')
         ax.plot(xs, ys, color=COLOR[p], lw=2.6 if big else 1.6, zorder=3 if big else 2)
         mk = np.linspace(0, len(xs)-1, 18).astype(int)
