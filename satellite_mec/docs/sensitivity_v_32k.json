@@ -38,6 +38,19 @@
       "queue_mb": 100.69145942980239,
       "Z": 0.4880386363432424,
       "sub_dir": "/home/user/Test1/satellite_mec/results/20260621_155126_SensV_V50"
+    },
+    {
+      "V": 100.0,
+      "lambda_high": 4.0,
+      "T_TRAIN": 32000,
+      "CR": 0.7494126334161241,
+      "Sat": 0.7520636532312334,
+      "delay": 3.5625,
+      "HL": 0.00016891661417273293,
+      "DoD": 0.5048011050886426,
+      "queue_mb": 101.00095970559896,
+      "Z": 0.351281112276105,
+      "sub_dir": "/home/user/Test1/satellite_mec/results/20260621_183710_SensV_V100"
     }
   ],
   "baselines_reference": {}
