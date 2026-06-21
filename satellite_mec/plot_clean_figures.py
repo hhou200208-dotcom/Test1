@@ -106,21 +106,27 @@ def queue_fig(order, fname, w=150):
 # ── system totals at N=192 ──
 delay  = {p: np.asarray(S[p]['delay'],  float) * RATIO       for p in S}        # s
 energy = {p: np.asarray(S[p]['energy'], float) * RATIO / 1e3 for p in S}        # kJ
+# per-slot user satisfaction rate (active slots only; rate is N-invariant)
+satp   = {p: np.asarray(S[p]['sat_slot'], float)[np.asarray(S[p]['sat_denom'], float) > 0]
+          for p in S}
 
 # comparison
 pdf_fig(delay,  COMP, 'System total delay',   'cmp_delay_pdf.png')
 pdf_fig(energy, COMP, 'System total energy', 'cmp_energy_pdf.png')
+pdf_fig(satp,   COMP, 'User satisfaction',    'cmp_satisfaction_pdf.png')
 sat_bar(COMP, 'cmp_satisfaction.png')
 cum_hl_fig(COMP, 'cmp_cumulative_hl.png')
 queue_fig(COMP, 'cmp_queue_backlog.png')
 # ablation
 pdf_fig(delay,  ABL, 'System total delay',   'abl_delay_pdf.png')
 pdf_fig(energy, ABL, 'System total energy', 'abl_energy_pdf.png')
+pdf_fig(satp,   ABL, 'User satisfaction',    'abl_satisfaction_pdf.png')
 sat_bar(ABL, 'abl_satisfaction.png')
 cum_hl_fig(ABL, 'abl_cumulative_hl.png')
 
 print('Clean figures written to', OUT)
 for f in ['cmp_delay_pdf', 'abl_delay_pdf', 'cmp_energy_pdf', 'abl_energy_pdf',
+          'cmp_satisfaction_pdf', 'abl_satisfaction_pdf',
           'cmp_satisfaction', 'abl_satisfaction', 'cmp_cumulative_hl',
           'abl_cumulative_hl', 'cmp_queue_backlog']:
     print(' -', f + '.png')
