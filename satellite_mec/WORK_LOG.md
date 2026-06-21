@@ -256,6 +256,14 @@ HL 压到 1.77e-4 的方法（TD3 4.43e-4 / MHSPO 5.09e-4 / GDCO 2.42e-4 均远�
 - ⚠️ 注意：`25_v_queue`（V 敏感性）数据只存了 `queue_mb`（MB/星），无任务个数；要改任务个数得**重跑 V 扫描**，暂保留 MB 口径。
 - **干净版图集**（用户要求，`docs/figures_clean/`，脚本 `plot_clean_figures.py`）：9 张极简图——**只留算法名+轴名+坐标数值**，无标题/脚注/注解（留极淡虚线网格读数）。含**新做的 2 张消融 PDF**（`abl_delay_pdf` / `abl_energy_pdf`）。对比 5 张(cmp_*) + 消融 4 张(abl_*)：delay_pdf / energy_pdf / satisfaction / cumulative_hl(+对比 queue_backlog)。原 `figures_paper/` 带注解版**保留不动**（论文 N=192 披露口径在那）。
 
+## M15：V 敏感性 **32K 全重扫**（进行中，留痕）
+
+**动机**：原 V 扫描在 **8K 单跑**（`docs/figures_sensitivity_v/`），显示 V=100 最优——但 M11 已证 V=100@32K 反不如 V=50（CR 0.758 vs 0.786），8K 峰是欠拟合/seed 运气。V=100@32K 的 checkpoint/HL **已丢失**（results/ 未入库、fresh container），无法直接取用 → **唯一诚实做法是 5 个 V 全在 32K 重训出一致曲线**（不可混预算，否则=挑数据红旗）。
+
+**命令（可复现）**：`python sensitivity_v_paper.py --t_train 32000`（V∈{5,25,50,100,250}，定稿超参 BETA=0.02/W_DONE=10/W_HL=2/W_TIMEOUT=5/W_REJECT=5，每 V 训 32K+评估，~37min/V，全程 ~3h）。
+**留痕计划**：结果 JSON 增量落 `results/<ts>_SensV_paper/`；完成后拷至 `docs/sensitivity_v_32k.json` + per-V checkpoint 拷至 `checkpoints/SensV_V*/` 入库；重出敏感性图（32K 口径）。
+**预期**：32K 下 V=50 合法最优（拆除"8K 图 V=100 是峰"的审稿地雷）。**结果以实测为准，不预设**。
+
 ---
 
 # 第三部分：当前状态总结
