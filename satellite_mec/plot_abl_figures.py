@@ -15,7 +15,7 @@ S = json.load(open(DATA))
 RATIO = 192 / 25
 
 ABL    = ['LyaMAPPO', 'MAPPO_NoBat', 'LyapunovGreedy']
-LABEL  = {'LyaMAPPO':'LyaMAPPO\n(full)', 'MAPPO_NoBat':'MAPPO_NoBat\n(−battery)',
+LABEL  = {'LyaMAPPO':'LyaMAPPO\n(full)', 'MAPPO_NoBat':'MAPPO-NoDOD\n(−DoD)',
           'LyapunovGreedy':'LyapunovGreedy\n(−learning)'}
 COLOR  = {'LyaMAPPO':'#d62728', 'MAPPO_NoBat':'#e377c2', 'LyapunovGreedy':'#8c564b'}
 col = lambda p: COLOR[p]

@@ -14,8 +14,10 @@ S    = json.load(open(os.path.join(os.path.dirname(__file__), 'docs', 'series_lh
 OUT  = os.path.join(os.path.dirname(__file__), 'docs', 'figures_paper')
 RATIO = 192 / 25
 
-ORDER = ['LyaMAPPO', 'TD3Sched', 'MHSPO', 'GDCO', 'GreedyDelay', 'LyapunovGreedy', 'LocalOnly']
+ORDER = ['LyaMAPPO', 'TD3Sched', 'MHSPO', 'GDCO', 'LocalOnly']   # 对比实验：5 算法
 ORDER = [p for p in ORDER if p in S]
+DISP  = {'LocalOnly':'LSO', 'MAPPO_NoBat':'MAPPO-NoDOD'}
+disp  = lambda p: DISP.get(p, p)
 COLOR = {'LyaMAPPO':'#d62728','TD3Sched':'#1f77b4','MHSPO':'#2ca02c','GDCO':'#9467bd',
          'GreedyDelay':'#ff7f0e','LyapunovGreedy':'#8c564b','LocalOnly':'#7f7f7f'}
 MARK  = {'LyaMAPPO':'s','TD3Sched':'o','MHSPO':'^','GDCO':'P','GreedyDelay':'D',
@@ -37,7 +39,7 @@ def kde_fig(vals, xlabel, title, fname, note=None, smooth=2.2):
         ax.plot(xs, ys, color=COLOR[p], lw=2.6 if big else 1.6, zorder=3 if big else 2)
         mk = np.linspace(0, len(xs)-1, 18).astype(int)
         ax.plot(xs[mk], ys[mk], color=COLOR[p], marker=MARK[p], ls='none',
-                markersize=6 if big else 5, label=p, zorder=3 if big else 2)
+                markersize=6 if big else 5, label=disp(p), zorder=3 if big else 2)
     ax.set_xlabel(xlabel); ax.set_ylabel('Distribution'); ax.set_title(title)
     ax.set_xlim(lo, hi); ax.set_ylim(bottom=0)
     ax.legend(fontsize=8, ncol=2); ax.grid(True, ls=':', alpha=0.4)

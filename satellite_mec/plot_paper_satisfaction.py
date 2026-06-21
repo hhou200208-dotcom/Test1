@@ -12,10 +12,12 @@ OUT  = os.path.join(os.path.dirname(__file__), 'docs', 'figures_paper')
 os.makedirs(OUT, exist_ok=True)
 res = json.load(open(DATA))
 
-ORDER = ['LyaMAPPO', 'TD3Sched', 'MHSPO', 'GDCO', 'GreedyDelay', 'LyapunovGreedy', 'LocalOnly']
+ORDER = ['LyaMAPPO', 'TD3Sched', 'MHSPO', 'GDCO', 'LocalOnly']   # 对比实验：5 算法
 ORDER = [p for p in ORDER if p in res]
 COLOR = {'LyaMAPPO':'#d62728', 'TD3Sched':'#1f77b4', 'MHSPO':'#2ca02c', 'GDCO':'#9467bd',
          'GreedyDelay':'#ff7f0e', 'LyapunovGreedy':'#8c564b', 'LocalOnly':'#7f7f7f'}
+DISP  = {'LocalOnly':'LSO', 'MAPPO_NoBat':'MAPPO-NoDOD'}
+disp  = lambda p: DISP.get(p, p)
 col = lambda p: COLOR.get(p, '#333333')
 hl4 = lambda p: res[p]['hl'] * 1e4   # HL in units of 1e-4
 
@@ -29,7 +31,7 @@ for p in ORDER:
     big = (p == 'LyaMAPPO')
     ax.scatter(x, y, s=340 if big else 170, c=col(p), edgecolors='black',
                linewidths=1.6 if big else 0.8, zorder=3, marker='*' if big else 'o')
-    ax.annotate(p, (x, y), textcoords='offset points',
+    ax.annotate(disp(p), (x, y), textcoords='offset points',
                 xytext=(9, 9 if not big else -18), fontsize=10,
                 fontweight='bold' if big else 'normal', color=col(p))
 ax.annotate('', xy=(0.86, ymax*0.12), xytext=(0.60, ymax*0.12),
@@ -58,7 +60,7 @@ for ax, (key, title, scale, fmt) in zip(axes.flat, metrics):
     for i, v in enumerate(vals):
         ax.text(i, v, fmt.format(v), ha='center', va='bottom', fontsize=8)
     ax.set_xticks(range(len(ORDER)))
-    ax.set_xticklabels(ORDER, rotation=30, ha='right', fontsize=9)
+    ax.set_xticklabels([disp(p) for p in ORDER], rotation=30, ha='right', fontsize=9)
     ax.set_title(title, fontsize=11)
     ax.grid(True, axis='y', ls=':', alpha=0.5)
 fig.suptitle('7-Policy Comparison (N=192, $\\lambda$=4, 5400 slots) — LyaMAPPO dominates on HL', fontsize=13)
