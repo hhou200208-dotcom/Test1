@@ -54,6 +54,8 @@ satellite_mec/docs/figures_paper/          # 14 张论文图（已做好）
 ## 复现命令
 ```bash
 cd /home/user/Test1/satellite_mec
+# 新容器先装依赖（fresh container 默认没有这些）
+pip install numpy torch scipy matplotlib pypdf
 # 逐槽序列评估(8策略,~15min) → 出图数据
 python eval_series.py
 # 出图
