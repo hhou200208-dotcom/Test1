@@ -3,6 +3,19 @@
 Saved trained model weights for paper-grade reproducibility.
 These are tracked by git (unlike `results/` which is gitignored).
 
+> ## ⚠️ CRITICAL — `LyaMAPPO_lh4_32K` is an IRREPRODUCIBLE golden checkpoint
+> This is the paper's headline model (satisfaction/CR ≈ **0.786**, HL/slot **1.74e-4**).
+> M15 (2026-06-21) found training-seed variance is large: a **fresh** V=50@32K
+> retrain with identical hyperparameters reached only **CR 0.745 / HL 2.89e-4**
+> (−4.1 pp / +66 %). **This exact checkpoint cannot be reliably reproduced by
+> retraining.** Therefore:
+> - **NEVER delete, overwrite, or re-train into this directory.**
+> - It is committed to git AND pushed to origin (survives container loss).
+> - Integrity is pinned in `LyaMAPPO_lh4_32K/CHECKSUMS.md5` (verify with
+>   `md5sum -c CHECKSUMS.md5`).
+> - Marked by git tag `golden-lyamappo-v50-32k`.
+
+
 ## Directory layout
 
 ```
