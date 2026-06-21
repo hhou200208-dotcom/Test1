@@ -70,23 +70,8 @@ ax.set_title('User Satisfaction (N=192, $\\lambda$=4) — rate is N-invariant (v
 ax.grid(True, axis='y', ls=':', alpha=0.5)
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'satisfaction.png'), dpi=160); plt.close()
 
-# ── Fig 5: ablation (LyaMAPPO vs NoBat vs LyapunovGreedy) ──
-ABL = [p for p in ['LyaMAPPO','MAPPO_NoBat','LyapunovGreedy'] if p in S]
-fig, (a1, a2) = plt.subplots(1, 2, figsize=(12, 4.6))
-# satisfaction
-sv = [S[p]['satisfaction'] for p in ABL]
-b = a1.bar(range(len(ABL)), sv, color=[col(p) for p in ABL], edgecolor='black', lw=0.8)
-a1.bar_label(b, fmt='%.3f'); a1.set_xticks(range(len(ABL)))
-a1.set_xticklabels(['LyaMAPPO\n(full)','MAPPO_NoBat\n(−battery)','LyapunovGreedy\n(−learning)'], fontsize=9)
-a1.set_ylabel('Satisfaction'); a1.set_title('Ablation: Satisfaction'); a1.grid(True,axis='y',ls=':',alpha=0.5)
-# cumulative HL
-for p in ABL:
-    y = cum(S[p]['hl'])
-    a2.plot(np.arange(len(y)), y, label=p, color=col(p), lw=2.4 if p=='LyaMAPPO' else 1.6)
-a2.set_xlabel('Time slot'); a2.set_ylabel('Cumulative HL (per-sat)')
-a2.set_title('Ablation: Cumulative HL'); a2.legend(fontsize=9); a2.grid(True,ls=':',alpha=0.5)
-fig.suptitle('Ablation — battery modeling drives low HL; learning drives satisfaction', fontsize=12)
-plt.tight_layout(); plt.savefig(os.path.join(OUT,'ablation.png'), dpi=160); plt.close()
+# ── Ablation figures are produced by a SEPARATE script: plot_abl_figures.py ──
+# (comparison-experiment and ablation-experiment result figures are distinct sets)
 
 # ── Fig 6: scalability projection (total energy ∝ N; satisfaction flat) ──
 fig, (a1, a2) = plt.subplots(1, 2, figsize=(12, 4.6))
@@ -105,6 +90,7 @@ a2.set_title('Satisfaction N-invariant (validated @N=192)'); a2.legend(fontsize=
 fig.suptitle('Scalability: system totals ∝ N, rates invariant — validated by N=192 spot-check', fontsize=12)
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'scalability.png'), dpi=160); plt.close()
 
-print('Figures written to', OUT)
-for f in ['cumulative_hl','total_energy','total_delay','satisfaction','ablation','scalability']:
+print('Comparison figures written to', OUT)
+for f in ['cumulative_hl','total_energy','total_delay','satisfaction','scalability']:
     print(' -', f+'.png')
+print('(ablation figures: run plot_abl_figures.py)')
