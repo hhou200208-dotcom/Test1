@@ -97,7 +97,7 @@ def queue_fig(order, fname, w=150):
         q = smooth(np.asarray(S[p]['queue_tasks'], float) * NSAT)
         ax.plot(np.arange(len(q)), q, color=col(p), label=disp(p),
                 lw=2.6 if p == 'LyaMAPPO' else 1.4, zorder=3 if p == 'LyaMAPPO' else 2)
-    ax.set_xlabel('Time slot'); ax.set_ylabel('System queue backlog (tasks)')
+    ax.set_xlabel('Time slot'); ax.set_ylabel('System queue backlog')
     ax.legend(fontsize=9)
     ax.grid(True, ls=':', alpha=0.3)
     _save(fname)
@@ -108,14 +108,14 @@ delay  = {p: np.asarray(S[p]['delay'],  float) * RATIO       for p in S}        
 energy = {p: np.asarray(S[p]['energy'], float) * RATIO / 1e3 for p in S}        # kJ
 
 # comparison
-pdf_fig(delay,  COMP, 'System total delay (s)',   'cmp_delay_pdf.png')
-pdf_fig(energy, COMP, 'System total energy (kJ)', 'cmp_energy_pdf.png')
+pdf_fig(delay,  COMP, 'System total delay',   'cmp_delay_pdf.png')
+pdf_fig(energy, COMP, 'System total energy', 'cmp_energy_pdf.png')
 sat_bar(COMP, 'cmp_satisfaction.png')
 cum_hl_fig(COMP, 'cmp_cumulative_hl.png')
 queue_fig(COMP, 'cmp_queue_backlog.png')
 # ablation
-pdf_fig(delay,  ABL, 'System total delay (s)',   'abl_delay_pdf.png')
-pdf_fig(energy, ABL, 'System total energy (kJ)', 'abl_energy_pdf.png')
+pdf_fig(delay,  ABL, 'System total delay',   'abl_delay_pdf.png')
+pdf_fig(energy, ABL, 'System total energy', 'abl_energy_pdf.png')
 sat_bar(ABL, 'abl_satisfaction.png')
 cum_hl_fig(ABL, 'abl_cumulative_hl.png')
 
