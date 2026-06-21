@@ -25,16 +25,19 @@ disp  = lambda p: DISP.get(p, p)
 col = lambda p: COLOR.get(p, '#333')
 cum = lambda a: np.cumsum(np.asarray(a))
 
-# ── Fig 1: Cumulative HL curve (per-sat, intensive -> N-invariant) ⭐ ──
+# ── Fig 1: System Cumulative HL curve (sum over 192 satellites) ⭐ ──
+NSAT = 192
 fig, ax = plt.subplots(figsize=(7.5, 5))
 for p in ORDER:
-    y = cum(S[p]['hl'])
+    y = cum(S[p]['hl']) * NSAT          # 系统总和 = per-sat 平均 × 192 颗
     ax.plot(np.arange(len(y)), y, label=disp(p), color=col(p),
             lw=2.6 if p=='LyaMAPPO' else 1.5, zorder=3 if p=='LyaMAPPO' else 2)
-ax.set_xlabel('Time slot'); ax.set_ylabel('Per-satellite Cumulative Health Loss')
-ax.set_title('Per-satellite Cumulative Battery Health Loss (N=192, $\\lambda$=4)\n'
-             'LyaMAPPO stays flat-low while battery-agnostic policies climb (per-sat HL is N-invariant)')
+ax.set_xlabel('Time slot'); ax.set_ylabel('System Cumulative Health Loss (192 satellites)')
+ax.set_title('System Cumulative Battery Health Loss (N=192, $\\lambda$=4)\n'
+             'sum over 192 satellites — LyaMAPPO stays flat-low while others climb')
 ax.legend(fontsize=8, ncol=2); ax.grid(True, ls=':', alpha=0.5)
+ax.text(0.5, -0.16, 'Per-satellite HL is N-invariant (validated at N=192); system total = per-sat × 192.',
+        transform=ax.transAxes, ha='center', fontsize=7, color='gray', style='italic')
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'cumulative_hl.png'), dpi=160); plt.close()
 
 # ── Fig 2 & 3: system total energy / delay bars (N=192) ──

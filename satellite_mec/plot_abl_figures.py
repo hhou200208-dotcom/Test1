@@ -32,14 +32,15 @@ ax.set_title('Ablation — User Satisfaction (N=192)\nremoving learning collapse
 ax.grid(True, axis='y', ls=':', alpha=0.5)
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'ablation_satisfaction.png'), dpi=160); plt.close()
 
-# ── Ablation 2: cumulative HL (−battery explodes it) ──
+# ── Ablation 2: system cumulative HL (sum over 192 sats; −DoD explodes it) ──
 fig, ax = plt.subplots(figsize=(7, 4.8))
 for p in ABL:
-    y = cum(S[p]['hl'])
+    y = cum(S[p]['hl']) * 192          # 系统总和 = per-sat 平均 × 192 颗
     ax.plot(np.arange(len(y)), y, label=LABEL[p].replace('\n',' '), color=col(p),
             lw=2.6 if p=='LyaMAPPO' else 1.8)
-ax.set_xlabel('Time slot'); ax.set_ylabel('Per-satellite Cumulative Health Loss')
-ax.set_title('Ablation — Cumulative Battery Health Loss (N=192)\nremoving battery modeling explodes HL')
+ax.set_xlabel('Time slot'); ax.set_ylabel('System Cumulative Health Loss (192 satellites)')
+ax.set_title('Ablation — System Cumulative Battery Health Loss (N=192)\n'
+             'sum over 192 satellites — removing DoD/battery explodes HL')
 ax.legend(fontsize=9); ax.grid(True, ls=':', alpha=0.5)
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'ablation_cumulative_hl.png'), dpi=160); plt.close()
 
