@@ -71,13 +71,17 @@ ax.grid(True, axis='y', ls=':', alpha=0.5)
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'satisfaction.png'), dpi=160); plt.close()
 
 # ── Fig 4b: queue backlog (task count per satellite) over time — comparison ──
+def _smooth(a, w=150):
+    a = np.asarray(a, float)
+    return np.convolve(a, np.ones(w)/w, mode='valid') if len(a) >= w else a
 fig, ax = plt.subplots(figsize=(7.5, 5))
 for p in ORDER:
-    q = np.asarray(S[p]['queue_tasks'])
+    q = _smooth(S[p]['queue_tasks'], 150)
     ax.plot(np.arange(len(q)), q, label=p, color=col(p),
-            lw=2.6 if p=='LyaMAPPO' else 1.3, zorder=3 if p=='LyaMAPPO' else 2)
+            lw=2.6 if p=='LyaMAPPO' else 1.4, zorder=3 if p=='LyaMAPPO' else 2)
 ax.set_xlabel('Time slot'); ax.set_ylabel('Queue Backlog (tasks per satellite)')
-ax.set_title('Queue Backlog over Time (N=192, $\\lambda$=4)\nper-satellite queued task count (N-invariant)')
+ax.set_title('Queue Backlog over Time (N=192, $\\lambda$=4)\n'
+             'per-satellite queued task count (150-slot moving average)')
 ax.legend(fontsize=8, ncol=2); ax.grid(True, ls=':', alpha=0.5)
 plt.tight_layout(); plt.savefig(os.path.join(OUT,'queue_backlog.png'), dpi=160); plt.close()
 
