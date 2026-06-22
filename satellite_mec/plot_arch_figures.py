@@ -33,6 +33,77 @@ STAR             = '#b8860b'
 TASK_FLOW, ENE_FLOW, INFO_FLOW = '#222222', '#e8820c', '#8a8a8a'
 
 
+# ── language / fonts (zh = WenQuanYi Zen Hei; math symbols stay LaTeX) ──
+def set_lang_font(lang):
+    if lang == 'zh':
+        matplotlib.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei', 'DejaVu Sans']
+    else:
+        matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans']
+    matplotlib.rcParams['axes.unicode_minus'] = False
+
+
+# Figure-1 text table. Variable symbols (Q^F_n, V=50, ...) are universal and
+# left in math mode; only descriptive labels are translated.
+T_SYS = {
+    'en': {
+        'title': 'System Model — LEO Satellite Edge Computing with Battery-Health-Aware Offloading',
+        'a_label': '(a) LEO constellation & ISL',
+        'a_note': ('N = 192  (16$\\times$12 Walker);  4$\\times$4 shown ($\\cdots\\times$N)\n'
+                   'ISL: rate $R_{n,m}$, prop. delay $\\tau_{n,m}$  ($B$=100–300 Mb/s)\n'
+                   'red = high-load $\\lambda_{hi}{=}4.0$ · blue = low-load $\\lambda_{lo}{=}0.1$'),
+        'b_label': '(b) On-board task pipeline (one satellite)',
+        'task_arr': 'Task arrivals — Poisson $\\lambda$',
+        'task_note': 'task $K_i=\\{D_i$ bits, $X_i$ cyc/bit, deadline$\\}$,  $D_i\\in$[10,50] Mb',
+        'fwd_q': 'Forward queue  $Q^F_n$  (bits)',
+        'decision': 'offload decision\n$a\\in\\{0,1,\\dots,4\\}$',
+        'cmp_q': 'Compute queue\n$Q^B_n$ (bits)',
+        'dvfs_cpu': 'DVFS CPU  $f_{cmp}$',
+        'done': 'Done $\\checkmark$',
+        'local': '$a{=}0$\nlocal',
+        'isl_box': 'ISL →\nneighbor $m_k$',
+        'forward': '$a{=}k$ forward',
+        'to_neighbor': "→ neighbor's $Q^F_n$",
+        'dvfs_head': 'DVFS closed-form (Li TSC’24):',
+        'dvfs_eq': ('$f_{cmp}=\\min(F_{max},\\max(\\sqrt{Q^B/3V_{DVFS}\\kappa},f_{floor}))$\n'
+                    '$F_{max}{=}2$ GHz,  $E_{cmp}{=}\\kappa f^3\\tau$'),
+        'c_label': '(c) Battery energy cycle',
+        'solar': 'Solar harvest\n$P_{solar}\\leq 30$ W (65% lit)',
+        'battery': 'Battery  $E_{cap}{=}36$ kJ\nDoD $\\delta_n\\in[0.1,0.8]$',
+        'discharge': 'Discharge:\ncompute $\\kappa f^3\\tau$ + transmit $P_T D/R$',
+        'health': 'Health loss\n$H_n=\\delta_n\\,10^{\\,a(\\delta_n-1)}$\n(irreversible — paper headline)',
+        'lg_task': 'task flow', 'lg_ene': 'energy flow', 'lg_info': 'state broadcast (4 neighbours)',
+    },
+    'zh': {
+        'title': '系统模型 —— 面向电池健康的 LEO 卫星边缘计算任务卸载',
+        'a_label': '(a) LEO 星座与星间链路 (ISL)',
+        'a_note': ('$N=192$（16$\\times$12 Walker）；示意 4$\\times$4（$\\cdots\\times N$）\n'
+                   'ISL：速率 $R_{n,m}$，传播时延 $\\tau_{n,m}$（$B$=100–300 Mb/s）\n'
+                   '红 = 高负载 $\\lambda_{hi}{=}4.0$ · 蓝 = 低负载 $\\lambda_{lo}{=}0.1$'),
+        'b_label': '(b) 星上任务流水线（单颗卫星）',
+        'task_arr': '任务到达 —— 泊松过程 $\\lambda$',
+        'task_note': '任务 $K_i=\\{D_i$ 比特, $X_i$ 周期/比特, 截止$\\}$，$D_i\\in$[10,50] Mb',
+        'fwd_q': '前向队列  $Q^F_n$（比特）',
+        'decision': '卸载决策\n$a\\in\\{0,1,\\dots,4\\}$',
+        'cmp_q': '计算队列\n$Q^B_n$（比特）',
+        'dvfs_cpu': 'DVFS 处理器  $f_{cmp}$',
+        'done': '完成 $\\checkmark$',
+        'local': '$a{=}0$\n本地',
+        'isl_box': 'ISL →\n邻居 $m_k$',
+        'forward': '$a{=}k$ 转发',
+        'to_neighbor': '→ 邻居的 $Q^F_n$',
+        'dvfs_head': 'DVFS 闭式解 (Li TSC’24)：',
+        'dvfs_eq': ('$f_{cmp}=\\min(F_{max},\\max(\\sqrt{Q^B/3V_{DVFS}\\kappa},f_{floor}))$\n'
+                    '$F_{max}{=}2$ GHz，$E_{cmp}{=}\\kappa f^3\\tau$'),
+        'c_label': '(c) 电池能量循环',
+        'solar': '太阳能采集\n$P_{solar}\\leq 30$ W（65% 光照）',
+        'battery': '电池  $E_{cap}{=}36$ kJ\n放电深度 $\\delta_n\\in[0.1,0.8]$',
+        'discharge': '放电：\n计算 $\\kappa f^3\\tau$ + 传输 $P_T D/R$',
+        'health': '健康损耗\n$H_n=\\delta_n\\,10^{\\,a(\\delta_n-1)}$\n（不可逆 —— 论文核心命题）',
+        'lg_task': '任务流', 'lg_ene': '能量流', 'lg_info': '状态广播（4 邻居）',
+    },
+}
+
+
 # ── primitives ────────────────────────────────────────────────────────
 def box(ax, x, y, w, h, text='', fc='#fff', ec='#333', lw=1.4, fs=10,
         tc='#111', bold=False, rounded=True, zorder=2, va='center', pad=0.18):
@@ -84,27 +155,28 @@ def sat_icon(ax, cx, cy, s=0.16, body=C_ENV, ec=C_ENV_E, panel='#33527a', zorder
 # ══════════════════════════════════════════════════════════════════════
 # Figure 1 — System Model
 # ══════════════════════════════════════════════════════════════════════
-def fig_system_model():
+def fig_system_model(lang='en'):
+    set_lang_font(lang)
+    t = T_SYS[lang]
     fig, ax = plt.subplots(figsize=(16, 9))
     ax.set_xlim(0, 16); ax.set_ylim(0, 9); ax.axis('off')
-    ax.text(8, 8.66, 'System Model — LEO Satellite Edge Computing with Battery-Health-Aware Offloading',
-            ha='center', fontsize=15, fontweight='bold')
+    ax.text(8, 8.66, t['title'], ha='center', fontsize=15, fontweight='bold')
 
     # ---- region (a): constellation + ISL + solar ----
     box(ax, 0.3, 1.05, 5.0, 7.15, fc='#fbfcfe', ec='#c4cdda', lw=1.1, rounded=True)
-    lbl(ax, 2.8, 7.95, '(a) LEO constellation & ISL', fs=11, weight='bold')
+    lbl(ax, 2.8, 7.95, t['a_label'], fs=11, weight='bold')
     gx = np.linspace(1.15, 4.45, 4); gy = np.linspace(2.35, 6.7, 4)
     hi = {(1, 2), (2, 1)}  # representative high-load satellites
     pos = {}
     for i, yv in enumerate(gy):
         for j, xv in enumerate(gx):
             pos[(i, j)] = (xv, yv)
-    # ISL links (4-neighbour grid)
+    # ISL links (4-neighbour grid) — #1: brighter & thicker so topology reads
     for (i, j), (xv, yv) in pos.items():
         for di, dj in ((0, 1), (1, 0)):
             if (i + di, j + dj) in pos:
                 x2, y2 = pos[(i + di, j + dj)]
-                ax.plot([xv, x2], [yv, y2], color=C_ENV_E, lw=1.0, alpha=0.55, zorder=1)
+                ax.plot([xv, x2], [yv, y2], color=C_ENV_E, lw=1.7, alpha=0.9, zorder=1)
     for (i, j), (xv, yv) in pos.items():
         high = (i, j) in hi
         sat_icon(ax, xv, yv, s=0.17, body=('#f6d2d2' if high else C_ENV),
@@ -117,10 +189,7 @@ def fig_system_model():
                 color='#e0a800', lw=1.3, zorder=2)
     arrow(ax, (1.25, 7.1), (pos[(2, 0)][0] - 0.05, pos[(2, 0)][1] + 0.25),
           color=ENE_FLOW, ls=(0, (4, 2)), lw=1.5)
-    lbl(ax, 2.66, 1.92, 'N = 192  (16$\\times$12 Walker);  4$\\times$4 shown ($\\cdots\\times$N)\n'
-                        'ISL: rate $R_{n,m}$, prop. delay $\\tau_{n,m}$  ($B$=100–300 Mb/s)\n'
-                        'red = high-load $\\lambda_{hi}{=}4.0$ · blue = low-load $\\lambda_{lo}{=}0.1$',
-        fs=8.2, style='italic', color='#444')
+    lbl(ax, 2.66, 1.86, t['a_note'], fs=8.2, style='italic', color='#444')
     # zoom callout to region (b)
     for cyc in (0.55, -0.55):
         ax.plot([pos[(1, 2)][0] + 0.18, 5.65], [pos[(1, 2)][1] + cyc * 0.5, 7.6 if cyc > 0 else 1.55],
@@ -129,41 +198,39 @@ def fig_system_model():
 
     # ---- region (b): on-board pipeline ----
     box(ax, 5.65, 1.05, 6.05, 7.15, fc='#ffffff', ec='#c4cdda', lw=1.1)
-    lbl(ax, 8.67, 7.95, '(b) On-board task pipeline (one satellite)', fs=11, weight='bold')
-    box(ax, 6.55, 6.95, 4.25, 0.8, 'Task arrivals — Poisson $\\lambda$', fc=C_TASK, ec=C_TASK_E, fs=10)
-    lbl(ax, 8.67, 6.62, 'task $K_i=\\{D_i$ bits, $X_i$ cyc/bit, deadline$\\}$,  $D_i\\in$[10,50] Mb',
-        fs=7.6, color='#555')
-    box(ax, 6.55, 5.55, 4.25, 0.78, 'Forward queue  $Q^F_n$  (bits)', fc=C_QUE, ec=C_QUE_E, fs=10)
-    diamond(ax, 8.67, 4.42, 2.7, 1.05, 'offload decision\n$a\\in\\{0,1,\\dots,4\\}$', fc=C_ENV, fs=9)
-    box(ax, 6.05, 2.55, 2.55, 0.78, 'Compute queue\n$Q^B_n$ (bits)', fc=C_QUE, ec=C_QUE_E, fs=9)
-    box(ax, 6.05, 1.35, 2.55, 0.82, 'DVFS CPU  $f_{cmp}$', fc='#e9eef5', ec='#5b6b80', fs=9.5, bold=True)
-    box(ax, 9.05, 1.35, 1.75, 0.82, 'Done ✓', fc=C_DONE, ec=C_CRI_E, fs=10, bold=True)
+    lbl(ax, 8.67, 7.95, t['b_label'], fs=11, weight='bold')
+    box(ax, 6.55, 6.95, 4.25, 0.8, t['task_arr'], fc=C_TASK, ec=C_TASK_E, fs=10)
+    lbl(ax, 8.67, 6.62, t['task_note'], fs=7.6, color='#555')
+    box(ax, 6.55, 5.55, 4.25, 0.78, t['fwd_q'], fc=C_QUE, ec=C_QUE_E, fs=10)
+    diamond(ax, 8.67, 4.42, 2.7, 1.05, t['decision'], fc=C_ENV, fs=9)
+    box(ax, 6.05, 2.55, 2.55, 0.78, t['cmp_q'], fc=C_QUE, ec=C_QUE_E, fs=9)
+    box(ax, 6.05, 1.35, 2.55, 0.82, t['dvfs_cpu'], fc='#e9eef5', ec='#5b6b80', fs=9.5, bold=True)
+    box(ax, 9.05, 1.35, 1.75, 0.82, t['done'], fc=C_DONE, ec=C_CRI_E, fs=10, bold=True)
     # arrows (task flow)
     arrow(ax, (8.67, 6.95), (8.67, 6.33))
     arrow(ax, (8.67, 5.55), (8.67, 4.96))
-    arrow(ax, (7.9, 4.05), (7.32, 3.33)); lbl(ax, 7.15, 3.62, '$a{=}0$\nlocal', fs=8)
+    arrow(ax, (7.9, 4.05), (7.32, 3.33)); lbl(ax, 7.12, 3.62, t['local'], fs=8)
     arrow(ax, (7.32, 2.55), (7.32, 2.17))
     arrow(ax, (8.6, 1.76), (9.05, 1.76))
-    # forward branch -> ISL out (back toward constellation)
+    # forward branch -> ISL out
     arrow(ax, (9.95, 4.05), (10.95, 5.05), rad=-0.2)
-    box(ax, 10.05, 5.05, 1.55, 0.72, 'ISL →\nneighbor $m_k$', fc='#eaf0fa', ec=C_ENV_E, fs=8)
-    lbl(ax, 9.85, 3.66, '$a{=}k$ forward', fs=8)
-    arrow(ax, (10.05, 5.4), (5.95, 6.7), color=TASK_FLOW, ls=(0, (5, 2)), lw=1.3, rad=0.25)
-    lbl(ax, 7.0, 7.18, "to neighbor's $Q^F$", fs=7.4, color='#555', style='italic')
-    # DVFS annotation (inside region b, clear of the bottom legend)
-    lbl(ax, 9.95, 2.92, 'DVFS (Li TSC’24):\n'
-                        '$f_{cmp}=\\min(F_{max},\\max(\\sqrt{Q^B/3V_{DVFS}\\kappa},f_{floor}))$\n'
-                        '$F_{max}{=}2$ GHz,  $E_{cmp}{=}\\kappa f^3\\tau$',
-        fs=7.3, color='#333', bg='#f7f9fc')
+    box(ax, 10.05, 5.05, 1.55, 0.72, t['isl_box'], fc='#eaf0fa', ec=C_ENV_E, fs=8)
+    lbl(ax, 9.85, 3.66, t['forward'], fs=8)
+    # #3: forwarded task -> neighbour's queue, short top-right cue (no full-width sweep)
+    arrow(ax, (10.83, 5.77), (11.25, 6.55), color=TASK_FLOW, ls=(0, (5, 2)), lw=1.3, rad=-0.25)
+    lbl(ax, 10.78, 6.78, t['to_neighbor'], fs=7.4, color='#555', style='italic')
+    # #2: DVFS closed-form moved beside the DVFS CPU box, tied with a leader line
+    ax.plot([8.62, 9.4], [1.92, 2.78], color='#9aa6b6', lw=1.0, ls=(0, (2, 2)), zorder=2)
+    lbl(ax, 10.0, 3.5, t['dvfs_head'], fs=7.6, color='#333', weight='bold')
+    lbl(ax, 10.0, 2.98, t['dvfs_eq'], fs=7.2, color='#333', bg='#f7f9fc')
 
     # ---- region (c): battery energy cycle ----
     box(ax, 12.05, 1.05, 3.65, 7.15, fc='#fffdf8', ec='#e6cfa6', lw=1.1)
-    lbl(ax, 13.87, 7.95, '(c) Battery energy cycle', fs=11, weight='bold')
-    box(ax, 12.45, 6.6, 2.9, 0.95, 'Solar harvest\n$P_{solar}\\leq 30$ W (65% lit)', fc='#fff1c9', ec='#e0a800', fs=9)
-    box(ax, 12.45, 4.95, 2.9, 1.0, 'Battery  $E_{cap}{=}36$ kJ\nDoD $\\delta_n\\in[0.1,0.8]$', fc='#eaf2ea', ec=C_CRI_E, fs=9.5, bold=True)
-    box(ax, 12.45, 3.2, 2.9, 1.0, 'Discharge:\ncompute $\\kappa f^3\\tau$ + transmit $P_T D/R$', fc='#fde7e7', ec=C_ACT_E, fs=8.6)
-    box(ax, 12.45, 1.35, 2.9, 1.15, 'Health loss\n$H_n=\\delta_n\\,10^{\\,a(\\delta_n-1)}$\n(irreversible — paper headline)',
-        fc='#f6d2d2', ec=C_ACT_E, fs=9, bold=False)
+    lbl(ax, 13.87, 7.95, t['c_label'], fs=11, weight='bold')
+    box(ax, 12.45, 6.6, 2.9, 0.95, t['solar'], fc='#fff1c9', ec='#e0a800', fs=9)
+    box(ax, 12.45, 4.95, 2.9, 1.0, t['battery'], fc='#eaf2ea', ec=C_CRI_E, fs=9.5, bold=True)
+    box(ax, 12.45, 3.2, 2.9, 1.0, t['discharge'], fc='#fde7e7', ec=C_ACT_E, fs=8.6)
+    box(ax, 12.45, 1.35, 2.9, 1.15, t['health'], fc='#f6d2d2', ec=C_ACT_E, fs=9, bold=False)
     arrow(ax, (13.9, 6.6), (13.9, 5.95), color=ENE_FLOW, ls=(0, (4, 2)))
     arrow(ax, (13.9, 3.2), (13.9, 4.0), color=ENE_FLOW, ls=(0, (4, 2)))   # discharge into battery (energy out)
     arrow(ax, (13.9, 4.95), (13.9, 4.22), color=TASK_FLOW)
@@ -172,9 +239,9 @@ def fig_system_model():
     # ---- legend ----
     lx = 0.6
     for dx, (col, ls, txt) in enumerate([
-            (TASK_FLOW, '-', 'task flow'),
-            (ENE_FLOW, (0, (4, 2)), 'energy flow'),
-            (INFO_FLOW, (0, (1, 2)), 'state broadcast (4 neighbours)')]):
+            (TASK_FLOW, '-', t['lg_task']),
+            (ENE_FLOW, (0, (4, 2)), t['lg_ene']),
+            (INFO_FLOW, (0, (1, 2)), t['lg_info'])]):
         x0 = lx + dx * 4.7
         ax.plot([x0, x0 + 0.7], [0.55, 0.55], color=col, lw=2.0, ls=ls)
         lbl(ax, x0 + 0.85, 0.55, txt, fs=9, ha='left')
@@ -182,7 +249,8 @@ def fig_system_model():
     arrow(ax, (4.5, 6.7), (5.65, 6.0), color=INFO_FLOW, ls=(0, (1, 2)), lw=1.2, style='-|>')
 
     plt.tight_layout()
-    p = os.path.join(OUT, 'arch_system_model.png')
+    fname = 'arch_system_model.png' if lang == 'en' else f'arch_system_model_{lang}.png'
+    p = os.path.join(OUT, fname)
     plt.savefig(p, dpi=160, bbox_inches='tight'); plt.close()
     return p
 
@@ -191,6 +259,7 @@ def fig_system_model():
 # Figure 2 — LyaMAPPO framework (CTDE)
 # ══════════════════════════════════════════════════════════════════════
 def fig_framework():
+    set_lang_font('en')  # framework labels are English; never inherit zh font
     fig, ax = plt.subplots(figsize=(16, 9))
     ax.set_xlim(0, 16); ax.set_ylim(0, 9); ax.axis('off')
     ax.text(8, 8.66, 'LyaMAPPO Framework — Lyapunov Drift-plus-Penalty $\\otimes$ MAPPO (CTDE)',
@@ -279,8 +348,10 @@ def fig_framework():
 
 
 if __name__ == '__main__':
-    p1 = fig_system_model()
-    p2 = fig_framework()
+    import sys
+    langs = sys.argv[1:] if len(sys.argv) > 1 else ['en', 'zh']
+    written = [fig_system_model(lang=lg) for lg in langs]
+    written.append(fig_framework())
     print('Architecture figures written:')
-    print(' -', p1)
-    print(' -', p2)
+    for w in written:
+        print(' -', w)
