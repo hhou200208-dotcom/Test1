@@ -17,8 +17,10 @@ satellite_mec/WORK_LOG.md                  # 完整工作历史 M0-M13 + 论文�
 satellite_mec/PROJECT_STATE.md             # 状态快照
 satellite_mec/METHODS.md                   # 论文方法 4.1-4.13（不改）
 satellite_mec/checkpoints/README.md        # 模型加载
-satellite_mec/docs/ARCHITECTURE_DIAGRAMS_SPEC.md  # 架构图构图清单（下一步用）
-satellite_mec/docs/figures_paper/          # 14 张论文图（已做好）
+satellite_mec/docs/ARCHITECTURE_DIAGRAMS_SPEC.md  # 架构图构图清单
+satellite_mec/docs/EXPERIMENT_CHAPTER.md   # 实验章节正文草稿(A-F,含机理三因子分解)
+satellite_mec/docs/figures_paper/          # 论文图(14结果图 + 2架构图 arch_*)
+satellite_mec/docs/figures_clean/          # 9 张极简图(无标题/无单位)
 ```
 
 ## 沟通规范（铁律）
@@ -45,15 +47,26 @@ satellite_mec/docs/figures_paper/          # 14 张论文图（已做好）
 
 **命名**：LocalOnly→显示 **LSO**；MAPPO_NoBat→显示 **MAPPO-NoDOD**（数据/ckpt key 不变，只图标签映射）；GreedyDelay 已从图中删除。
 
+## 本会话新增（M14 之后，全部已 push）
+- **Codex 对抗式审查**（`docs/CODEX_REVIEW_BRIEF.md`）：机理/代码/方法论三层。已修 6 个代码问题（beta_task→`Config.BETA_TASK`、TD3 注释中性化、超参命令归档进 checkpoints/README、`eval_diagnostics.py` 口径修正等）。Codex 判定："综合最优"不成立、应写 **Pareto 权衡**。
+- **多种子 n=10 评估**（`docs/multiseed_lh4.json`，`eval_multiseed.py`）：对比/消融表已带 mean±std（CI 极紧）。LyaMAPPO 满意度 0.787（强策略**第4**），但系统累计 HL **183**/能耗 **6957kJ** 强策略最低 → **Pareto + 电池命门坐实**。
+- **机理三因子分解**（`docs/diagnostics_lh4.json`，`eval_diagnostics.py`）：`cumHL=meanL'×timing×energy`；`能耗=level×dispersion`。本质=**z_n 择时(~1.5×) × 省能(~1.85×)**；削峰为次要、DoD 平均水平**未降**（已写进 EXPERIMENT_CHAPTER C.2）。
+- **V 敏感性 32K 全扫描**（`docs/sensitivity_v_32k.json`）：5 点 CR 极差仅 2.4pp < **训练-seed 方差 ~4pp** → **V 在噪声内不可分辨**；结论改"V-鲁棒性"非"V-最优"。
+- ⚠️ **金 checkpoint 钉死**：`checkpoints/LyaMAPPO_lh4_32K`（0.786/1.74e-4）**重训复现不出来**（普通 V=50 重训仅 0.745/2.89e-4）。已加 `CHECKSUMS.md5` + README 警告 + 本地 tag `golden-lyamappo-v50-32k`。**禁删/禁覆盖/禁重训进此目录**。
+
+## ⏳ 待拍板的开放决策（爸爸定）
+1. **E 敏感性章节**：建议写"V-鲁棒性"（CR 对 V 不敏感、落在训练噪声内）——拆掉"为何 V=50 不 V=100"地雷。
+2. **headline 训练方差**：0.786 是幸运单训。(A) 维持+披露方差为 limitation / (B) 主配置多训 seed 求 mean±std(~5h) / (C) 其他。
+
 ## 红线（不动）
-- LyaMAPPO V=50 32K checkpoint / METHODS 4.1-4.13 / 7 创新 / 定稿超参（BETA=0.02,W_DONE=10,W_HL=2…）
+- LyaMAPPO V=50 **32K 金 checkpoint（不可复现，已钉死）** / METHODS 4.1-4.13 / 7 创新 / 定稿超参（BETA=0.02,W_DONE=10,W_HL=2…）
 - 共享 DVFS 物理基底（公平性）
 - **N=25 原始数据/checkpoint 保留作 N=192 投影证据，绝不删**
 
 ## 下一步（待办）
-1. **论文写作**：experiment 章节（图都齐，**含 2 张架构图**）、GDCO/TD3 baseline 描述段、电池叙事写进 intro/method
-2. 架构图微调（按需）：连线/配色/标签可再调；TikZ 已编译通过，可直接 `\includegraphics` 进论文
-3. 可选：满意度时间曲线、训练收敛曲线
+1. **架构图**（若本会话做这个）：2 张**已存在**（M14）——`docs/figures_paper/arch_system_model.png` · `arch_lyamappo_framework.png`；TikZ 投稿源 `docs/tikz/arch_*.tex`（pdflatex 编译过）；出图脚本 `plot_arch_figures.py`；构图清单 `docs/ARCHITECTURE_DIAGRAMS_SPEC.md`。可在此基础上**微调/重做**（连线/配色/标签/布局/中英文）。
+2. **论文写作**：EXPERIMENT_CHAPTER 补 E 章节 + intro/method 电池叙事 + GDCO/TD3 baseline 描述段。
+3. 先处理上面两个开放决策。
 
 ## 复现命令
 ```bash
