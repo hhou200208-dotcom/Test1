@@ -4,7 +4,7 @@
 > 数值口径：所有标量取自 `docs/multiseed_lh4.json`（n=10 独立种子，报 mean±std）与 `docs/diagnostics_lh4.json`（机理三因子分解，代表性单次诊断）。引用一律以 `\cite{...}` 占位。
 > 诚实框架：Pareto 权衡（非无限定"综合最优"）；电池健康损失 HL 与能耗为两个独立维度；N=25 实测、N=192 为已验证线性可扩展性投影；训练为单 checkpoint，方差作为局限披露。
 >
-> **进度**：§1 ✅ ｜ §2 ✅ ｜ §3 ✅ 待审 ｜ §4 ⬜
+> **进度**：§1 ✅ ｜ §2 ✅ ｜ §3 ✅ ｜ §4 ✅ 待审（草稿全节完结）
 
 ---
 
@@ -138,24 +138,26 @@ Actor 输入 54 维（per task），Critic 输入 245 维（5 节点局部 + 10 
 **透过现象看本质——三因子分解**。基于 `diagnostics_lh4.json`（`dod_before` 精确口径，`effLprime_check` 已验证一致），累计 HL 可乘法分解为
 
 \[
-\text{cumHL} = \underbrace{\overline{L'}}_{\text{DoD 平均水平}} \times \underbrace{\text{timing}}_{z_n\ \text{择时}} \times \underbrace{(E/E_{\text{cap}})}_{\text{能耗}}.
+\text{cumHL} = \underbrace{\overline{L'}}_{\text{损伤率水平}} \times \underbrace{\text{timing}}_{z_n\ \text{择时}} \times \underbrace{(E/E_{\text{cap}})}_{\text{能耗}}.
 \]
 
-相对 LyaMAPPO（基准 = 1.00）的各因子如下（**已按 `meanLprime` 更正 TD3/MHSPO 的 DoD 水平**）：
+相对 LyaMAPPO（基准 = 1.00）的各因子如下（**已按 `meanLprime` 更正 TD3/MHSPO 的损伤率水平**）：
 
 **表 2　累计 HL 三因子分解（相对 LyaMAPPO）**
 
-| 算法 | HL 倍数 | DoD 水平 | × 择时 | × 能耗 |
+| 算法 | HL 倍数 | 损伤率水平 \(\overline{L'}\) | × 择时 | × 能耗 |
 |---|---|---|---|---|
 | **LyaMAPPO** | 1.00× | 1.00 | 1.00 | 1.00 |
 | TD3-Sched | 2.55× | 1.03 | **1.42** | **1.74** |
 | MHSPO | 2.93× | 0.98 | **1.62** | **1.86** |
 
 > （消融变体 MAPPO-NoDoD 3.06× = 1.04 × 1.55 × 1.89，见 §3。）
+>
+> **术语澄清**：此处「损伤率水平」\(\overline{L'}\) 为平均**边际损伤率** \(\overline{L'(\delta)}\)（真正乘进 HL 公式的量），**不同于平均 DoD** \(\overline{\delta}\)（放电深度本身）。因 \(L'(\delta)\) 对 \(\delta\) 指数凸，二者排序一致但数值不等：例如 TD3 平均 DoD 0.500（倍数 1.025）对应损伤率水平 1.03，MHSPO 平均 DoD 0.461（倍数 0.945）对应损伤率水平 0.98。分解须用 \(\overline{L'}\)；平均 DoD 仅作直观佐证（见下）。
 
 **两条反直觉、但被数据证实的结论**：
 
-1. **不是靠"把电池放得更浅"**。平均损伤水平 \(\overline{L'}\) 在所有强策略中几乎相同（0.98–1.04）；LyaMAPPO 的平均 DoD（0.488）甚至略高于 MHSPO（0.461）。即 LyaMAPPO 并未通过降低 DoD 来减损。
+1. **不是靠"把电池放得更浅"**。损伤率水平 \(\overline{L'}\) 在所有强策略中几乎相同（0.98–1.04）；作为直观佐证，LyaMAPPO 的**平均 DoD**（0.488）甚至略高于 MHSPO（0.461）。即 LyaMAPPO 并未通过降低 DoD 来减损。
 2. **\(z_n\) 的真实作用是"择时"而非"压深"**。LyaMAPPO 的 timing 因子 ≈ 1.05（中性），而 TD3/MHSPO 为 1.42–1.62——后者把耗能决策落在高 \(\delta\) 时刻，而 LyaMAPPO 把耗能**推迟到电池充足（低 \(\delta\)）的时刻**。因 \(L'(\delta)\) 对 \(\delta\) 指数凸，**同样的能量在低 \(\delta\) 时造成的不可逆损伤指数级更小**。
 
 **机理一句话**：LyaMAPPO 的电池优势（HL ≈ 1/3）≈ **择时（\(z_n\)，~1.5×）× 省能（~1.85×）**；它不是把电池放得更浅，而是"**在对的时刻、用更低的总能量放电**"。凸性（\(L'\) 指数、\(f^3\) 三次方）解释了为何"择时 + 省能"能换来指数级的健康收益。能耗因子的进一步分解见 §2.4。
@@ -219,7 +221,7 @@ Actor 输入 54 维（per task），Critic 输入 245 维（5 节点局部 + 10 
 
 ### 3.1 寿命损耗
 
-**MAPPO-NoDoD：HL 暴涨至 554（3.0× 完整版）**（图 `ablation_cumulative_hl.png`、极简版 `abl_cumulative_hl.png`）。三因子分解 = **1.04（DoD 水平）× 1.55（择时）× 1.89（能耗）**（数据见 `diagnostics_lh4.json`：`meanLprime`=0.921、`timing`=1.625、`E`=1728 kJ）。与 §2.1 的对手呈同一模式——HL 恶化主要来自**择时变差**（耗能落到高 δ 时刻）与**总能量上升**，而非 DoD 放得更深（DoD 水平仅 1.04）。这直接证明：**电池感知项（\(z_n\) + \(W_{\text{HL}}\)）正是把 HL 压到 1/3 的命门控制器，且它同时带来了择时与能效两项收益**。
+**MAPPO-NoDoD：HL 暴涨至 554（3.0× 完整版）**（图 `ablation_cumulative_hl.png`、极简版 `abl_cumulative_hl.png`）。三因子分解 = **1.04（损伤率水平 \(\overline{L'}\)）× 1.55（择时）× 1.89（能耗）**（数据见 `diagnostics_lh4.json`：`meanLprime`=0.921、`timing`=1.625、`E`=1728 kJ）。与 §2.1 的对手呈同一模式——HL 恶化主要来自**择时变差**（耗能落到高 δ 时刻）与**总能量上升**，而非 DoD 放得更深（损伤率水平仅 1.04）。这直接证明：**电池感知项（\(z_n\) + \(W_{\text{HL}}\)）正是把 HL 压到 1/3 的命门控制器，且它同时带来了择时与能效两项收益**。
 
 **LyapunovGreedy：HL 反而更低（70，仅完整版的 0.38×）**——但这是"摆烂"的假象：它疯狂转发（`fwd_rate`=2.40，全场最高）把负载摊平、DoD 拉平（`timing`≈1.03，中性），靠"少干活"压低了 HL。低 HL 在此**不是优点**，而是吞吐崩溃的副产品（见 §3.3）。
 
@@ -254,4 +256,62 @@ Actor 输入 54 维（per task），Critic 输入 245 维（5 节点局部 + 10 
 
 ## 4 算法流程图（Algorithm Flowchart）
 
-> ⬜ 待写：LyaMAPPO 训练与决策流程图说明（配 `arch_lyamappo_framework.png`）。
+本节给出 LyaMAPPO 的整体流程，对应框架图 `arch_lyamappo_framework.png`（投稿质量 TikZ 源见 `docs/tikz/arch_lyamappo_framework.tex`）。算法采用**集中训练、分布式执行（CTDE）**范式，将 Lyapunov drift-plus-penalty 与 MAPPO 深度耦合。
+
+### 4.1 框架总览
+
+数据流自左向右分四个阶段（图中以竖虚线标出 CTDE 边界）：
+
+\[
+\text{环境} \;\rightarrow\; \text{Lyapunov 奖励构造} \;\rightarrow\; \text{MAPPO 学习器(Actor/Critic)} \;\xrightarrow{\text{PPO 回流}}\; \text{参数更新}
+\]
+
+- **环境（A 区）**：每颗卫星维护三个队列——前向队列 \(Q^F_n\)、计算队列 \(Q^B_n\)，以及**放电深度虚拟队列 \(z_n\)**（按 Neely 的虚拟队列法将 DoD 约束转化为队列稳定性）。
+- **Lyapunov 层（B 区）**：构造 Lyapunov 函数 \(L = \tfrac12\sum_n\big[(Q^F_n)^2 + (Q^B_n)^2 + \eta\, z_n^2\big]\)（\(\eta=0.5\)），最小化 drift-plus-penalty \(\Delta L + V\cdot \text{Cost}\)（\(V=50\)）得到每时隙基础代价/奖励 \(r_n\)；再叠加 **outcome-aware 奖励塑形** \(R_n = r_n + W_{\text{done}}\!\cdot\!\text{完成} - W_{\text{to}}\!\cdot\!\text{超时} - W_{\text{rej}}\!\cdot\!\text{拒绝} - W_{\text{HL}}\!\cdot\!\text{HL} - W_{\text{queue}}\!\cdot\!\text{队列}\)（权重见 §1.6）。
+- **Actor（C 区，分布式执行）**：输入 54 维（含本地 \(z_n\)），网络 `LayerNorm→256→256→5→MaskedSoftmax`，逐任务采样动作 \(a\in\{0=\text{本地},\,1\text{–}4=\text{转发邻居}\}\)。
+- **Critic（D 区，集中训练）**：输入 245 维（5 节点局部 + 10 维全局摘要，**与 N 解耦**），网络 `LayerNorm→256→256→1`，仅训练时使用全局信息。
+- **PPO 更新（E 区）**：GAE + 任务级优势分解，clipped PPO 回流更新 Actor 与 Critic。
+
+### 4.2 决策流程（分布式执行）
+
+执行侧每星只需本地 54 维状态、独立运行 Actor，无需中心节点——故可扩展到 N=192。每时隙、每任务**顺序决策**（关键创新：每个任务现拉最新局部状态 `act_one`，使同一时隙内先后任务能感知彼此造成的队列/电池变化）：
+
+```
+对每个时隙 t:
+  对前向队列 Q^F_n 中每个任务 i（按序）:
+    s_i ← 拉取最新局部状态(54 维, 含 z_n, 邻居 9×4, 任务 7)
+    logits ← Actor(s_i);  动作掩码屏蔽不可行邻居
+    a_i ← MaskedSoftmax(logits) 采样
+    若 a_i = 0: 任务入本地计算队列 Q^B_n
+    否则:        任务经 ISL 转发至邻居 a_i 的 Q^F
+  环境演进: DVFS 闭式解定频 f_cmp → 计算/传输能耗 → 电池 DoD/HL 更新 → 队列推进
+```
+
+### 4.3 训练流程（集中训练）
+
+训练侧用全局信息的 Critic 估值，按 PPO 更新（超参见 §1.6：\(\gamma=0.99\)、\(\lambda_{\text{GAE}}=0.95\)、\(\epsilon=0.2\)、\(\beta_e=0.02\)、\(\beta_{\text{task}}=0.5\)、\(K=64\)、minibatch=64、epoch=2）：
+
+```
+初始化 Actor θ, Critic φ
+重复直到 32K 时隙:
+  # 采样
+  以当前 θ 跑 K=64 时隙, 记录 (s_i, a_i, R_n, 全局状态) 入 Rollout Buffer
+  # 优势估计
+  V(·) ← Critic_φ(全局状态)
+  A_slot ← GAE(R_n, V; γ=0.99, λ=0.95)
+  A_task ← A_slot + β_task·(r − r̄)/σ        # 任务级优势分解, β_task=0.5
+  # 更新 (epoch=2, minibatch=64)
+  L_actor  ← clipped-PPO(θ; A_task, ε=0.2) − β_e·H(π)     # 熵正则
+  L_critic ← MSE(Critic_φ, 回报目标)
+  θ ← θ − lr_a·∇L_actor   (lr_a=1e-4)
+  φ ← φ − lr_c·∇L_critic  (lr_c=1e-3)
+```
+
+### 4.4 七个创新点
+
+框架图以 ⭐ 标注七个创新点，与上述流程一一对应：① Lyapunov–MAPPO 深度耦合（drift-plus-penalty 直接构造奖励）；② \(z_n\)（DoD 虚拟队列）入 Actor 状态；③ outcome-aware 奖励塑形；④ 可扩展 Critic（与 N 解耦，使 N=25 训练能投影至 N=192）；⑤ 任务级顺序决策（`act_one`）；⑥ 共享 DVFS 物理基底（保证对比公平，见 §1.2）；⑦ 任务级优势分解。其中 ②④⑤ 是 §2 电池优势（择时）与可扩展性的算法根源，⑥ 是全部对比/消融公平性的前提。
+
+---
+
+> **本草稿完结线**。§1–§4 已覆盖 outline 全部要素（实验设置 / 对比 5×5 / 消融 2×4 / 算法流程图）。
+> 待爸爸终审后处理的遗留项：①「损伤率水平 vs DoD 水平」命名最终定稿；② 旧 `EXPERIMENT_CHAPTER.md` C.2 标反因子是否同步更正；③ `\cite` 占位 key 替换为真实 bib；④ 是否插入 `![](...)` 图片预览；⑤ 是否补 §5 V 敏感性（旧 chapter E 节，outline 未列，可选）。
