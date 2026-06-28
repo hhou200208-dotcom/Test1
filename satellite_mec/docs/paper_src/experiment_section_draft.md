@@ -1,10 +1,33 @@
-# 实验（中文草稿 · CCF-A 版式）
+# 仿真实验与结果分析（Simulation Experiments and Analysis）— 中文草稿 · CCF-A 版式
 
-> 结构按 `experiment_outline.md`：§2 对比实验（5 算法 × 5 指标）→ §3 消融实验（2 变体 × 4 指标）→ §4 算法流程图。§1 实验设置为独立成章所必需的前置。
+> 结构：§1 实验设置 → §2 对比实验（5 算法 × 5 指标）→ §3 消融实验（2 变体 × 4 指标）。
+> （**算法流程图已按 CCF-A 惯例移至方法章**，见 `docs/paper_src/method_algorithm_flow_draft.md`。）
 > 数值口径：所有标量取自 `docs/multiseed_lh4.json`（n=10 独立种子，报 mean±std）与 `docs/diagnostics_lh4.json`（机理三因子分解，代表性单次诊断）。引用一律以 `\cite{...}` 占位。
 > 诚实框架：Pareto 权衡（非无限定"综合最优"）；电池健康损失 HL 与能耗为两个独立维度；N=25 实测、N=192 为已验证线性可扩展性投影；训练为单 checkpoint，方差作为局限披露。
 >
-> **进度**：§1 ✅ ｜ §2 ✅ ｜ §3 ✅ ｜ §4 ✅ 待审（草稿全节完结）
+> **进度**：§1 ✅ ｜ §2 ✅ ｜ §3 ✅（算法流程图已移出）
+
+---
+
+## 标题命名对照（平实式 vs 点题式）— 待爸爸最终选定
+
+> 当前正文标题用**平实式**（审稿人友好、零 overclaim）。下表并列**点题式**备选，供决策。指标小标题已加英文。
+
+| 编号 | 平实式（现用） | 点题式（备选） |
+|---|---|---|
+| 章 | 仿真实验与结果分析 | （已定，无备选） |
+| §1 | 实验设置 | —（设置节通常不点题） |
+| §2 | 对比实验 | 对比实验：Pareto 权衡下的电池优势 |
+| 2.1 | 寿命损耗（Battery Health Loss） | 寿命损耗：电池健康的断层领先与三因子机理 |
+| 2.2 | 系统时延（End-to-End Delay） | 系统时延：第一梯队的实时性 |
+| 2.3 | 用户满意度（User Satisfaction） | 用户满意度：可控的吞吐让步 |
+| 2.4 | 系统能耗（System Energy） | 系统能耗：低时钟省能与"能耗≠寿命" |
+| 2.5 | 任务积压（Queue Backlog） | 任务积压：Lyapunov 稳定性保障 |
+| §3 | 消融实验 | 消融实验：电池感知与强化学习缺一不可 |
+| 3.1 | 寿命损耗（Battery Health Loss） | 寿命损耗：电池感知是命门控制器 |
+| 3.2 | 系统时延（End-to-End Delay） | 系统时延：贪心短视的代价 |
+| 3.3 | 用户满意度（User Satisfaction） | 用户满意度：均衡须配学习 |
+| 3.4 | 系统能耗（System Energy） | 系统能耗：与寿命同源的恶化 |
 
 ---
 
@@ -131,7 +154,7 @@ Actor 输入 54 维（per task），Critic 输入 245 维（5 节点局部 + 10 
 
 因此本文不主张无限定的"综合最优"，而主张：**在 LEO 卫星电池不可更换、健康损耗不可逆这一约束维度上，LyaMAPPO 于竞争性策略中断层第一，且代价（≤5pp 吞吐）可控**。下面逐指标展开，并透过现象给出机理。
 
-### 2.1 寿命损耗（核心贡献）⭐
+### 2.1 寿命损耗（Battery Health Loss，核心贡献）⭐
 
 **现象**。系统累计 HL：LyaMAPPO **183±4**，为强策略断层最低——约为 MHSPO（529±5）的 1/3、TD3（463±6）的 ~40%（图 `cumulative_hl.png`、极简版 `cmp_cumulative_hl.png`）。LSO 的 HL（193±4）虽与 LyaMAPPO 相当，但其满意度仅 0.269、近乎瘫痪，不构成竞争。关键在于：LyaMAPPO 把 HL 压到 1/3，**只让出约 1–5pp 满意度**。
 
@@ -162,19 +185,19 @@ Actor 输入 54 维（per task），Critic 输入 245 维（5 节点局部 + 10 
 
 **机理一句话**：LyaMAPPO 的电池优势（HL ≈ 1/3）≈ **择时（\(z_n\)，~1.5×）× 省能（~1.85×）**；它不是把电池放得更浅，而是"**在对的时刻、用更低的总能量放电**"。凸性（\(L'\) 指数、\(f^3\) 三次方）解释了为何"择时 + 省能"能换来指数级的健康收益。能耗因子的进一步分解见 §2.4。
 
-### 2.2 系统时延
+### 2.2 系统时延（End-to-End Delay）
 
 **现象**。E2E 时延：TD3-Sched **3.06±0.01 s** 最低，LyaMAPPO **3.33±0.01 s** 与之同处第一梯队，均明显快于 MHSPO（3.53 s）、GDCO（4.52 s）、LSO（4.52 s）（图 `total_delay.png`、PDF 版 `delay_pdf.png`）。
 
 **机理**。LyaMAPPO 的负载均衡使热点星队列峰值最低：per-sat 队列峰值 `q_max ≈ 9.4`，与 TD3（9.34）并列最低，远低于 GDCO（12.5）、LSO（33.6）。共享 DVFS 的截止时间频率下限 \(f_{\text{floor}}\) 进一步保证排队任务按时完成。LyaMAPPO 相对 TD3 多出的 ~0.27 s，源于其更保守（更低时钟）的计算策略——这正是 §2.4 中以时延微让换能耗大降的体现。
 
-### 2.3 用户满意度
+### 2.3 用户满意度（User Satisfaction）
 
 **现象**。用户满意度：TD3-Sched **0.838±0.001** 最高，MHSPO 0.798，LyaMAPPO **0.787±0.001** 居五者第三，GDCO 0.727，LSO 0.269（图 `satisfaction.png`、逐任务 PDF `satisfaction_pdf.png`）。LyaMAPPO 低于 TD3 约 5pp、低于 MHSPO 约 1pp；因 std ≤ 0.001，CI 互不重叠，差距真实但幅度小。
 
 **定位**。满意度是 LyaMAPPO 在 Pareto 权衡中**主动让步**的维度：它以 ≤5pp 的吞吐让步，换取 §2.1 的 HL 断层领先与 §2.4 的能耗减半。值得注意的是，完全放开电池约束的消融变体 MAPPO-NoDoD 满意度升至 0.824（见 §3），印证"高吞吐"与"低 HL"在本场景下确为相互拉扯的两端——LyaMAPPO 选择守住电池命门。
 
-### 2.4 系统能耗
+### 2.4 系统能耗（System Energy）
 
 **现象**。系统总能耗：在强策略中 LyaMAPPO **6957±61 kJ** 最低，约为 TD3（12217 kJ）的 57%、MHSPO（12907 kJ）的 54%（图 `total_energy.png`、PDF 版 `energy_pdf.png`）。
 
@@ -193,7 +216,7 @@ Actor 输入 54 维（per task），Critic 输入 245 维（5 节点局部 + 10 
 
 **能耗 ≠ HL：LSO 反例**。LSO 不能卸载（`fwd_rate = 0`，转发率 0%）→ 过载星本地硬扛 → 热点星 DoD 高达 0.707（普通星仅 0.287）、队列峰值 `q_max = 33.6`、timing = 2.13（全场最差）。其系统总能耗最低（4852 kJ，仅因"摆烂"、满意度 0.269），**累计 HL 却 ≈ LyaMAPPO（193 vs 183）**。这直接证明：**能耗与 HL 是两个独立维度**——少花能量 ≠ 少伤电池；真正决定 HL 的是"在什么 DoD 下、以什么空间分布耗能"。这也是本文将 HL 与能耗分列两个指标、而非合并的实证依据。
 
-### 2.5 任务积压
+### 2.5 任务积压（Queue Backlog）
 
 **现象**。系统队列总任务数：TD3-Sched **482±3** 最低，LyaMAPPO（545±3）与 MHSPO（540±3）基本持平，均显著低于 GDCO（692±3）、LSO（1064±6）（图 `queue_backlog.png`、极简版 `cmp_queue_backlog.png`）。
 
@@ -219,25 +242,25 @@ Actor 输入 54 维（per task），Critic 输入 245 维（5 节点局部 + 10 
 
 **核心观察**：两个消融**朝相反方向失败**——去掉电池感知（NoDoD）毁了电池（HL 暴涨 3×），去掉学习（Greedy）毁了吞吐（满意度腰斩）。LyaMAPPO 是二者之间唯一可用的平衡点。下面逐指标展开。
 
-### 3.1 寿命损耗
+### 3.1 寿命损耗（Battery Health Loss）
 
 **MAPPO-NoDoD：HL 暴涨至 554（3.0× 完整版）**（图 `ablation_cumulative_hl.png`、极简版 `abl_cumulative_hl.png`）。三因子分解 = **1.04（损伤率水平 \(\overline{L'}\)）× 1.55（择时）× 1.89（能耗）**（数据见 `diagnostics_lh4.json`：`meanLprime`=0.921、`timing`=1.625、`E`=1728 kJ）。与 §2.1 的对手呈同一模式——HL 恶化主要来自**择时变差**（耗能落到高 δ 时刻）与**总能量上升**，而非 DoD 放得更深（损伤率水平仅 1.04）。这直接证明：**电池感知项（\(z_n\) + \(W_{\text{HL}}\)）正是把 HL 压到 1/3 的命门控制器，且它同时带来了择时与能效两项收益**。
 
 **LyapunovGreedy：HL 反而更低（70，仅完整版的 0.38×）**——但这是"摆烂"的假象：它疯狂转发（`fwd_rate`=2.40，全场最高）把负载摊平、DoD 拉平（`timing`≈1.03，中性），靠"少干活"压低了 HL。低 HL 在此**不是优点**，而是吞吐崩溃的副产品（见 §3.3）。
 
-### 3.2 系统时延
+### 3.2 系统时延（End-to-End Delay）
 
 **MAPPO-NoDoD**：E2E 时延 3.09 s，略快于 LyaMAPPO（3.33 s）——放开电池约束后可以更激进地高时钟计算，时延小幅改善，但代价是 HL/能耗翻倍。
 
 **LyapunovGreedy**：时延恶化至 6.25 s（近 2× 完整版），为全体最慢（图 `abl_delay_pdf.png`）。机理——无长视野信用分配的贪心只最小化**当前时隙**代价，频繁低时钟 + 盲目转发（`q_max`=16.5，远高于 LyaMAPPO 的 9.4）导致任务在队列中长时间积压，端到端时延显著拉长。
 
-### 3.3 用户满意度
+### 3.3 用户满意度（User Satisfaction）
 
 **MAPPO-NoDoD：满意度反升至 0.824**（高于完整版 0.787 约 4pp，图 `ablation_satisfaction.png`、极简版 `abl_satisfaction.png`）。去掉电池约束后策略可无顾忌地冲吞吐——这恰恰量化了 LyaMAPPO 为守住电池命门而**主动让出的吞吐**（约 4pp），与 §2.3 的 Pareto 叙事闭环。
 
 **LyapunovGreedy：满意度崩至 0.425**（仅完整版的 54%）。虽然它把 DoD 拉平、HL 压到最低，但**短视、无 critic、无 outcome 塑形**使其无法做长视野的任务取舍，吞吐直接坍塌。这说明：**Lyapunov 均衡本身有用，但必须配 RL 学习**才能既均衡又高吞吐——单靠贪心均衡换来的低 HL 是"瘫痪式"的、不可用。
 
-### 3.4 系统能耗
+### 3.4 系统能耗（System Energy）
 
 **MAPPO-NoDoD：能耗 13238 kJ（1.89× 完整版）**，为全场最高（图 `ablation_energy.png`、极简版 `abl_energy_pdf.png`）。双因子分解 = **1.50（时钟 level）× 1.27（削峰）**（见 §2.4 表 3 注）——与 HL 同源：放开电池约束后跑高时钟，能量与 HL 一起翻倍。
 
@@ -254,64 +277,8 @@ Actor 输入 54 维（per task），Critic 输入 245 维（5 节点局部 + 10 
 
 → **电池感知**是 HL 的命门控制器，且同时带来择时与能效；**RL 学习**是把"均衡"转化为"高吞吐均衡"的必要条件。LyaMAPPO 位于两个失败方向之间的可用平衡点——这正是 Pareto 权衡叙事在消融维度上的印证：完整模型并非在每个单项上最优，而是在"电池健康 × 吞吐"的约束面上取得了唯一可用的折中。
 
-## 4 算法流程图（Algorithm Flowchart）
-
-本节给出 LyaMAPPO 的整体流程，对应框架图 `arch_lyamappo_framework.png`（投稿质量 TikZ 源见 `docs/tikz/arch_lyamappo_framework.tex`）。算法采用**集中训练、分布式执行（CTDE）**范式，将 Lyapunov drift-plus-penalty 与 MAPPO 深度耦合。
-
-### 4.1 框架总览
-
-数据流自左向右分四个阶段（图中以竖虚线标出 CTDE 边界）：
-
-\[
-\text{环境} \;\rightarrow\; \text{Lyapunov 奖励构造} \;\rightarrow\; \text{MAPPO 学习器(Actor/Critic)} \;\xrightarrow{\text{PPO 回流}}\; \text{参数更新}
-\]
-
-- **环境（A 区）**：每颗卫星维护三个队列——前向队列 \(Q^F_n\)、计算队列 \(Q^B_n\)，以及**放电深度虚拟队列 \(z_n\)**（按 Neely 的虚拟队列法将 DoD 约束转化为队列稳定性）。
-- **Lyapunov 层（B 区）**：构造 Lyapunov 函数 \(L = \tfrac12\sum_n\big[(Q^F_n)^2 + (Q^B_n)^2 + \eta\, z_n^2\big]\)（\(\eta=0.5\)），最小化 drift-plus-penalty \(\Delta L + V\cdot \text{Cost}\)（\(V=50\)）得到每时隙基础代价/奖励 \(r_n\)；再叠加 **outcome-aware 奖励塑形** \(R_n = r_n + W_{\text{done}}\!\cdot\!\text{完成} - W_{\text{to}}\!\cdot\!\text{超时} - W_{\text{rej}}\!\cdot\!\text{拒绝} - W_{\text{HL}}\!\cdot\!\text{HL} - W_{\text{queue}}\!\cdot\!\text{队列}\)（权重见 §1.6）。
-- **Actor（C 区，分布式执行）**：输入 54 维（含本地 \(z_n\)），网络 `LayerNorm→256→256→5→MaskedSoftmax`，逐任务采样动作 \(a\in\{0=\text{本地},\,1\text{–}4=\text{转发邻居}\}\)。
-- **Critic（D 区，集中训练）**：输入 245 维（5 节点局部 + 10 维全局摘要，**与 N 解耦**），网络 `LayerNorm→256→256→1`，仅训练时使用全局信息。
-- **PPO 更新（E 区）**：GAE + 任务级优势分解，clipped PPO 回流更新 Actor 与 Critic。
-
-### 4.2 决策流程（分布式执行）
-
-执行侧每星只需本地 54 维状态、独立运行 Actor，无需中心节点——故可扩展到 N=192。每时隙、每任务**顺序决策**（关键创新：每个任务现拉最新局部状态 `act_one`，使同一时隙内先后任务能感知彼此造成的队列/电池变化）：
-
-```
-对每个时隙 t:
-  对前向队列 Q^F_n 中每个任务 i（按序）:
-    s_i ← 拉取最新局部状态(54 维, 含 z_n, 邻居 9×4, 任务 7)
-    logits ← Actor(s_i);  动作掩码屏蔽不可行邻居
-    a_i ← MaskedSoftmax(logits) 采样
-    若 a_i = 0: 任务入本地计算队列 Q^B_n
-    否则:        任务经 ISL 转发至邻居 a_i 的 Q^F
-  环境演进: DVFS 闭式解定频 f_cmp → 计算/传输能耗 → 电池 DoD/HL 更新 → 队列推进
-```
-
-### 4.3 训练流程（集中训练）
-
-训练侧用全局信息的 Critic 估值，按 PPO 更新（超参见 §1.6：\(\gamma=0.99\)、\(\lambda_{\text{GAE}}=0.95\)、\(\epsilon=0.2\)、\(\beta_e=0.02\)、\(\beta_{\text{task}}=0.5\)、\(K=64\)、minibatch=64、epoch=2）：
-
-```
-初始化 Actor θ, Critic φ
-重复直到 32K 时隙:
-  # 采样
-  以当前 θ 跑 K=64 时隙, 记录 (s_i, a_i, R_n, 全局状态) 入 Rollout Buffer
-  # 优势估计
-  V(·) ← Critic_φ(全局状态)
-  A_slot ← GAE(R_n, V; γ=0.99, λ=0.95)
-  A_task ← A_slot + β_task·(r − r̄)/σ        # 任务级优势分解, β_task=0.5
-  # 更新 (epoch=2, minibatch=64)
-  L_actor  ← clipped-PPO(θ; A_task, ε=0.2) − β_e·H(π)     # 熵正则
-  L_critic ← MSE(Critic_φ, 回报目标)
-  θ ← θ − lr_a·∇L_actor   (lr_a=1e-4)
-  φ ← φ − lr_c·∇L_critic  (lr_c=1e-3)
-```
-
-### 4.4 七个创新点
-
-框架图以 ⭐ 标注七个创新点，与上述流程一一对应：① Lyapunov–MAPPO 深度耦合（drift-plus-penalty 直接构造奖励）；② \(z_n\)（DoD 虚拟队列）入 Actor 状态；③ outcome-aware 奖励塑形；④ 可扩展 Critic（与 N 解耦，使 N=25 训练能投影至 N=192）；⑤ 任务级顺序决策（`act_one`）；⑥ 共享 DVFS 物理基底（保证对比公平，见 §1.2）；⑦ 任务级优势分解。其中 ②④⑤ 是 §2 电池优势（择时）与可扩展性的算法根源，⑥ 是全部对比/消融公平性的前提。
-
 ---
 
-> **本草稿完结线**。§1–§4 已覆盖 outline 全部要素（实验设置 / 对比 5×5 / 消融 2×4 / 算法流程图）。
-> 待爸爸终审后处理的遗留项：①「损伤率水平 vs DoD 水平」命名最终定稿；② 旧 `EXPERIMENT_CHAPTER.md` C.2 标反因子是否同步更正；③ `\cite` 占位 key 替换为真实 bib；④ 是否插入 `![](...)` 图片预览；⑤ 是否补 §5 V 敏感性（旧 chapter E 节，outline 未列，可选）。
+> **本草稿完结线**。实验部分 §1–§3 已覆盖 outline 的实验要素（实验设置 / 对比 5×5 / 消融 2×4）。
+> 算法流程图（原 §4）已按 CCF-A 惯例移至方法章草稿 `docs/paper_src/method_algorithm_flow_draft.md`。
+> 待爸爸终审后处理的遗留项：① 标题最终选定（平实式 / 点题式，见顶部对照表）；②「损伤率水平 vs DoD 水平」命名定稿；③ 旧 `EXPERIMENT_CHAPTER.md` C.2 标反因子是否同步更正；④ `\cite` 占位 key 替换为真实 bib；⑤ 是否插入 `![](...)` 图片预览；⑥ 是否补 V 敏感性章节（旧 chapter E 节，outline 未列，可选）。
