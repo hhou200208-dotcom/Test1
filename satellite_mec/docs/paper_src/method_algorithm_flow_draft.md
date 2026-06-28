@@ -2,7 +2,7 @@
 
 > 本节原属实验草稿 §4，按 CCF-A 惯例移入**方法章**（实验部分仅含设置 + 结果分析）。
 > 对应框架图 `docs/figures_paper/arch_lyamappo_framework.png`（投稿质量 TikZ 源 `docs/tikz/arch_lyamappo_framework.tex`）。
-> 超参引用见实验草稿 §1.6（或方法章对应超参表）；数值与 `ARCHITECTURE_DIAGRAMS_SPEC.md` / 代码核实一致。
+> 超参引用见实验草稿 §1「训练配置与超参」（或方法章对应超参表）；数值与 `ARCHITECTURE_DIAGRAMS_SPEC.md` / 代码核实一致。
 > 编号占位为 `X`，并入正式方法章时替换为实际章节号。
 
 ---
