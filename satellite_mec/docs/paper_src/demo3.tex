@@ -73,7 +73,7 @@ Lyapunov理论塑形奖励驱动的基于参数共享MAPPO的分布式在线调�
 针对上述趋势，在MEC卫星网络的星间卸载已有大量研究，
 现有工作多采用多跳转发机制，
 通过将任务沿多跳路径转发至轻载卫星执行，
-以充分利用星座的协同计算能力\cite{1}。
+以充分利用星座的协同计算能力\cite{zhang2024mhspo}。
 然而，多跳方案的决策复杂度随星座规模与跳数增长，
 且依赖全局拓扑状态信息。
 在LEO卫星网络的高速动态拓扑下，
@@ -1314,7 +1314,7 @@ $Q^F_n(0) = \theta_n$，$Q^B_n(0) = 0$，$Z_n(0) = 0$，
 逐槽推进，运行时长为一个轨道周期（5400 时隙）。为刻画空间负载不均衡与由此
 产生的电池压力，$1/5$ 的卫星为高负载星，任务到达率 $\lambda_{\text{high}}=4.0$
 （任务/时隙），其余为低负载星 $\lambda_{\text{low}}=0.1$，到达均服从泊松过程。
-电池与健康损耗模型（半指数寿命损耗、DoD 动态与 DoD 虚拟队列 $z_n$）见
+电池与健康损耗模型（半指数寿命损耗、DoD 动态与 DoD 虚拟队列 $Z_n$）见
 第~\ref{sec:system_model}~节；主要参数汇总于表~\ref{tab:sim_params}。
 本文所提算法在下文记为 \textbf{LyaMAPPO}。
 
@@ -1331,11 +1331,11 @@ $Q^F_n(0) = \theta_n$，$Q^B_n(0) = 0$，$Z_n(0) = 0$，
 时隙长度 $\tau$ & 1~s \\
 高/低负载率 $\lambda$ & 4.0 / 0.1（1/5 为高负载）\\
 任务大小 $s^i$ & 10--50~Mb \\
-计算密度 $h^i$ & 10--30~cycles/bit~\cite{li_tsc_2024} \\
+计算密度 $h^i$ & 10--30~cycles/bit~\cite{zhang2024mhspo} \\
 截止时间 & 1--12~s \\
 最大转发跳数 & 3 \\
-CPU 频率上限 $c_n$ & 2~GHz~\cite{zhang_tmc_2023} \\
-能耗系数 $\kappa$ & $1\times10^{-26}$~\cite{zhang_tmc_2023} \\
+CPU 频率上限 $c_n$ & 2~GHz~\cite{zhang2024mhspo} \\
+能耗系数 $\kappa$ & $1\times10^{-26}$~\cite{zhang2024mhspo} \\
 单星并发上限 & 6 \\
 ISL 速率 & 100--300~Mb/s \\
 发射功率 & 0.1~W \\
@@ -1364,11 +1364,11 @@ DVFS 频率选择、电池与 ISL 模型）之上，差异仅来自卸载/调度
     其代价函数不含电池健康与 DoD 约束。
     \item \textbf{MHSPO}~\cite{zhang2024mhspo}：将多跳星间对等卸载与 Lyapunov
     队列控制相结合的最强经典基准，以延迟在线梯度下降在线预测邻居负载并规避拥塞。
-    \item \textbf{GDCO}~\cite{chen2025gdco}：基于精确势博弈的分布式卸载，非学习型，
+    \item \textbf{GDCO}~\cite{6}：基于精确势博弈的分布式卸载，非学习型，
     各卫星依博弈均衡决策，仅优化能耗、不含电池健康项。
     \item \textbf{LSO}：平凡下界，所有任务在接入卫星本地处理、不启用星间卸载。
 \end{itemize}
-此外设置两个消融变体：\textbf{MAPPO-NoDoD}（移除电池感知，即将 $z_n$ 与
+此外设置两个消融变体：\textbf{MAPPO-NoDoD}（移除电池感知，即将 $Z_n$ 与
 健康损耗奖励项一并置零，为合并消融）与 \textbf{LyapunovGreedy}（移除强化学习，
 以无学习的贪心逐任务最小化当前时隙代价）。
 
@@ -1426,7 +1426,7 @@ LyaMAPPO 采用参数共享 MAPPO，奖励为 Lyapunov 归一化边费用叠加 
 图~\ref{fig:energy}~与图~\ref{fig:hl}~进一步对比系统能耗与累计电池健康损失（HL）。
 LyaMAPPO 在各对比策略中均展现优势：其系统总能耗约为 TD3 的 57\%、MHSPO 的 54\%，
 累计 HL 约为 MHSPO 的三分之一。这得益于 Lyapunov--DVFS 耦合下的低时钟运行，以及放电
-深度虚拟队列 $z_n$ 所实现的耗能``择时''。相反，缺乏电池感知的算法电池损耗严重：
+深度虚拟队列 $Z_n$ 所实现的耗能``择时''。相反，缺乏电池感知的算法电池损耗严重：
 MHSPO 与 TD3-Sched 的累计 HL 分别增至 LyaMAPPO 的 2.9 倍与 2.5 倍，系统能耗亦分别
 高出约 86\% 与 76\%。对累计 HL 的三因子分解表明，这种恶化主要并非源于更深的放电
 （各策略损伤率水平相近），而是源于它们将耗能决策集中于高放电深度时段。值得注意的是，
@@ -1438,7 +1438,7 @@ LSO 不具备卸载能力，其过载卫星须在本地处理全部到达任务�
 
 综上，LyaMAPPO 实现了优异的多目标权衡：以约 1--5 个百分点的满意度让步，换取显著更低
 的系统能耗与电池健康损耗，同时维持第一梯队的时延与稳定的队列。其根源在于
-Lyapunov--MAPPO 深度耦合与 $z_n$ 电池感知择时机制——将长期电池约束转化为可观测的
+Lyapunov--MAPPO 深度耦合与 $Z_n$ 电池感知择时机制——将长期电池约束转化为可观测的
 虚拟队列，并通过 RL 长视野学习，使能量消耗集中于放电深度较低的时段，从而以更低的总
 能量完成计算。
 
@@ -1473,7 +1473,7 @@ LyapunovGreedy & $0.425\pm0.002$ & $6.25\pm0.02$ & $70\pm2$ & $3356\pm46$ \\
 \end{table}
 
 为厘清 LyaMAPPO 中关键组件的作用，本节分别剥离两个组件：电池感知（放电深度虚拟队列
-$z_n$ 与健康损失奖励项 $w_h$）与强化学习。移除前者得到 MAPPO-NoDoD（$z_n$ 与 $w_h$
+$Z_n$ 与健康损失奖励项 $w_h$）与强化学习。移除前者得到 MAPPO-NoDoD（$Z_n$ 与 $w_h$
 一并置零，为合并消融，用于界定电池感知整体的作用）；移除后者得到 LyapunovGreedy
 （保留同一 Lyapunov 代价计算，但以无学习的贪心策略逐任务最小化当前时隙代价）。
 图~\ref{fig:abl_sat}~至图~\ref{fig:abl_hl}~及表~\ref{tab:ablation}~给出两变体与完整
@@ -1491,13 +1491,13 @@ $z_n$ 与健康损失奖励项 $w_h$）与强化学习。移除前者得到 MAPP
 图~\ref{fig:abl_energy}~与图~\ref{fig:abl_hl}~分别对比系统能耗与累计健康损失。移除
 电池感知后，MAPPO-NoDoD 的累计 HL 急剧上升至完整模型的 3.0 倍，系统能耗上升至 1.9 倍；
 对累计 HL 的三因子分解表明，这一恶化同时来自更差的耗能择时与更高的总能耗，而非更深的
-放电，印证 $z_n$ 与 $w_h$ 共同构成抑制健康损失的关键机制。LyapunovGreedy 的累计 HL
+放电，印证 $Z_n$ 与 $w_h$ 共同构成抑制健康损失的关键机制。LyapunovGreedy 的累计 HL
 虽更低（约为完整模型的 0.38 倍），但该结果并非源于有效的电池管理：其贪心策略实际处理的
 任务量极少（满意度仅 0.425），健康损失的降低是服务能力严重退化的伴随现象，而非可用的
 优化结果。
 
 综上，两个消融变体沿相反方向失效：移除电池感知（MAPPO-NoDoD）导致电池健康损失激增，
-移除强化学习（LyapunovGreedy）导致吞吐性能崩溃。唯有同时具备电池感知择时（$z_n$ 与
+移除强化学习（LyapunovGreedy）导致吞吐性能崩溃。唯有同时具备电池感知择时（$Z_n$ 与
 $w_h$）与强化学习长视野决策的完整 LyaMAPPO，方能在电池健康与服务质量之间取得可用的
 平衡。这一结果验证了本文两项核心设计的不可或缺性。
 
@@ -1508,7 +1508,7 @@ $w_h$）与强化学习长视野决策的完整 LyaMAPPO，方能在电池健康
 
 本文研究了 LEO 卫星边缘计算网络中电池感知的多跳任务卸载问题。针对深度放电加速电池
 容量衰减、威胁卫星在轨寿命这一核心挑战，本文采用半指数函数量化放电深度与电池寿命
-损耗的非线性关系，通过定义 DoD 虚拟队列 $z_n$ 并结合一阶泰勒线性化，在 Lyapunov
+损耗的非线性关系，通过定义 DoD 虚拟队列 $Z_n$ 并结合一阶泰勒线性化，在 Lyapunov
 漂移加惩罚框架内将非线性电池约束转化为可优化的线性代理目标；进而设计 Lyapunov
 理论塑形奖励驱动的参数共享 MAPPO 分布式在线调度算法，使神经网络策略在优化过程中
 隐式逼近理论最优解，并实现训练复杂度与卫星规模解耦。
@@ -1516,7 +1516,7 @@ $w_h$）与强化学习长视野决策的完整 LyaMAPPO，方能在电池健康
 仿真结果表明，与 TD3-Sched、MHSPO、GDCO 及本地卸载等基准相比，所提算法在保持第一
 梯队端到端时延与稳定队列积压的同时，将系统累计电池健康损耗降至最强基准的约三分之一、
 系统能耗降至约一半，仅以约 1--5 个百分点的用户满意度为代价。机理分析进一步揭示，这一
-电池优势主要源于 $z_n$ 驱动的耗能``择时''——将能量消耗调度至放电深度较低的时段，
+电池优势主要源于 $Z_n$ 驱动的耗能``择时''——将能量消耗调度至放电深度较低的时段，
 从而在损耗函数的强凸性下换取指数级的健康收益；消融实验验证了电池感知与强化学习两个
 组件缺一不可。
 
@@ -1527,14 +1527,6 @@ $w_h$）与强化学习长视野决策的完整 LyaMAPPO，方能在电池健康
 
 % ============================================================
 \begin{thebibliography}{99}
-
-\bibitem{1}
-X. Zhang, J. Liu, R. Zhang, Y. Huang, J. Tong, N. Xin,
-L. Liu, and Z. Xiong,
-``Energy-efficient computation peer offloading in satellite
-edge computing networks,''
-\textit{IEEE Trans. Mobile Comput.},
-vol. 23, no. 4, pp. 3077--3091, Apr. 2024.
 
 \bibitem{2}
 2025A Computation Offloading and Resource Allocation in LEO
@@ -1556,6 +1548,13 @@ on Satellite Systems' Availability.
 2025A A Game-Theoretical Approach for Distributed
 Computation Offloading in LEO Satellite-Terrestrial
 Edge Computing Systems.
+
+\bibitem{huang2024td3}
+T. Huang, Z. Fang, Q. Tang, R. Xie, T. Chen, and F. R. Yu,
+``Dual-timescales optimization of task scheduling and resource
+slicing in satellite-terrestrial edge computing networks,''
+\textit{IEEE Trans. Mobile Comput.},
+vol. 23, no. 12, pp. 14111--14127, Dec. 2024.
 
 \bibitem{zhang2024mhspo}
 X. Zhang, J. Liu, R. Zhang, Y. Huang, J. Tong, N. Xin,
