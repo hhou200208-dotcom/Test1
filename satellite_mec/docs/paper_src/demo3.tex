@@ -1418,8 +1418,7 @@ LyaMAPPO 采用参数共享 MAPPO，奖励为 Lyapunov 归一化边费用叠加 
 
 图~\ref{fig:sat}~与图~\ref{fig:delay}~分别对比 LyaMAPPO 与四个基线在卫星边缘网络
 场景下的逐时隙用户满意度与端到端时延。LyaMAPPO 与 TD3-Sched 在时延上同处第一梯队，
-明显优于 MHSPO、GDCO 与 LSO；这得益于任务级顺序决策等机制，使 LyaMAPPO 的热点卫星
-队列峰值与 TD3 并列最低。在满意度上，TD3-Sched 略占优势，是因为其代价函数不含电池
+明显优于 MHSPO、GDCO 与 LSO；这得益于 Lyapunov 目标下的负载均衡与 DVFS 截止下限 $f_{floor}$，保证排队任务按时完成，使 LyaMAPPO 的热点卫星队列峰值与 TD3 并列最低。在满意度上，TD3-Sched 略占优势，是因为其代价函数不含电池
 健康与 DoD 约束，能够采取更激进的高时钟卸载策略；但正如下文所示，这一优势以牺牲系统
 能耗与电池寿命为代价。相比之下，缺乏有效卸载与队列控制的 LSO 满意度最低，服务能力
 几乎丧失。
