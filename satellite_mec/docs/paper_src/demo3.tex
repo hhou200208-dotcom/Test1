@@ -338,16 +338,16 @@ $\alpha_n(t)$在时隙$t$末尾加入$Q^B_n(t+1)$，
 每时隙，卫星$n$为其全部本地任务选择单一计算频率$f^{cmp}_n(t)$，
 由每时隙 drift-plus-penalty 子问题
 \begin{equation}
-    \min_{0 \le f \le c_n}\; V_f\,\kappa f^3\tau - Q^{B}_n(t)\,f\,\tau
+    \min_{0 \le f \le c_n}\; V_f\,\kappa f^3\tau - Q^{B,\mathrm{cyc}}_n(t)\,f\,\tau
 \end{equation}
-求解，其中$Q^{B}_n(t)$为计算队列剩余CPU周期总量，$c_n$为CPU频率上限。
-一阶条件给出闭式解$f^{lyap}_n(t) = \sqrt{Q^{B}_n(t)/(3 V_f \kappa)}$。
+求解，其中$Q^{B,\mathrm{cyc}}_n(t)$为计算队列的剩余 CPU 周期总量（即 $Q^B_n$ 中各任务剩余数据量与其计算密度 $h^i$ 之积的总和），$c_n$为CPU频率上限。
+一阶条件给出闭式解$f^{lyap}_n(t) = \sqrt{Q^{B,\mathrm{cyc}}_n(t)/(3 V_f \kappa)}$。
 为保证截止可行，在公平份额调度（每任务获$f/N^B_n$）下设死线下限
 \begin{equation}
     f^{floor}_n(t) = N^B_n(t)\cdot\max_{i \in Q^B_n(t)}
-    \frac{\rho^i_n(t)}{\Delta^i_n(t)},
+    \frac{g^i_n(t)}{w^i_n(t)},
 \end{equation}
-其中$\rho^i_n(t)$、$\Delta^i_n(t)$分别为任务$i$的剩余CPU周期与剩余时间。
+其中$g^i_n(t)$、$w^i_n(t)$分别为任务$i$的剩余CPU周期数与剩余可用时间。
 最终计算频率为
 \begin{equation}
     f^{cmp}_n(t) = \mathrm{clip}\!\big(\max(f^{lyap}_n(t),\, f^{floor}_n(t)),\, 0,\, c_n\big),
@@ -590,6 +590,7 @@ $\bar{\alpha}_n$为本地处理任务数的历史滑动平均：
     {E^{cap}_n \cdot \left(N^{B*}_n(t+1)\right)^2}。
     \label{eq:delta_dod_comp_task}
 \end{equation}
+式\eqref{eq:delta_dod_comp_task}为奖励构造所用的每任务保守代理：它按满频 $c_n$ 的公平份额估计任务 $i$ 完整处理周期的能耗。由于实际计算频率 $f^{cmp}_n(t)\le c_n$（式\eqref{eq:cpu_alloc}），该代理不低于真实每任务能耗，偏保守；系统实际每时隙的计算 DoD 演进则按 DVFS 模型式\eqref{eq:dod_comp} 计算。
 
 对任务$i$被分配到本地处理的情况，
 预测的健康损耗增量为：
@@ -670,6 +671,11 @@ $b_{\max}, b_{\min}$ & 星间链路传输速率上界、下界（bits/s） \\
 $\lambda_{\max}$ & 单时隙最大任务到达数（个） \\
 $V$ & Lyapunov权衡参数 \\
 $\eta$ & DoD约束惩罚系数 \\
+$V_f$ & DVFS 频率选择权衡参数（经校准） \\
+$Q^{B,\mathrm{cyc}}_n(t)$ & 计算队列剩余 CPU 周期总量（cycles） \\
+$f^{cmp}_n(t)$ & 时隙$t$卫星$n$的计算频率（cycles/s） \\
+$f^{floor}_n(t)$ & 截止可行的最低计算频率下限（cycles/s） \\
+$g^i_n(t),\,w^i_n(t)$ & 任务$i$的剩余CPU周期数、剩余可用时间 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1019,7 +1025,7 @@ GAE优势估计：
 (\gamma\lambda_{GAE})^l\delta^{TD}_{t+l},
 \label{eq:gae}
 \end{equation}
-其中$\gamma=0.99$，$\lambda_{GAE}=0.9$。
+其中$\gamma=0.99$，$\lambda_{GAE}=0.95$。
 
 % ============================================================
 \subsection{理论保证}
@@ -1039,6 +1045,7 @@ GAE优势估计：
 \quad \forall n \in \mathcal{N},\ t。
 \label{eq:assumption2}
 \end{equation}
+需说明，训练中采用的 outcome-aware 辅助塑形（式\eqref{eq:reward_shape}）使学习策略偏离纯边费用目标，该偏离作为有限量并入 $\epsilon_{gap}$；因此定理1--3 的界仍成立，仅常数 $\epsilon_{gap}$ 相应增大。
 
 \textbf{假设3}（长期资源盈余）：
 存在常数$\epsilon > 0$和某个静态调度策略$\pi^s$，
