@@ -2,7 +2,7 @@
 
 > 依据代码核实：`satellite.py` 用 `core.dvfs.select_freq`（DVFS）；`env.py:224/248-258` 注入 outcome 塑形。
 > 论文 demo3.tex 现状：计算模型是定频公平份额（eq:cpu_alloc/comp_power/dod_comp）、奖励是纯 Lyapunov 边费用（eq:reward）。
-> 决定：① 能耗模型改 DVFS（下 §1）；② 奖励塑形两版对比（下 §2），待爸爸选 A/B。
+> **决定（已定稿）**：① 能耗模型改 DVFS（下 §1，采用）；② 奖励 **采用版本 A**（披露辅助塑形，见下 §2）；③ N=25→192 投影：本阶段搁置，写设置节时再议。
 
 ## 1 计算/能耗模型 → Lyapunov-DVFS（替换 eq:cpu_alloc / comp_power / dod_comp）
 
@@ -34,7 +34,7 @@ P^{comp}_n(t)=\kappa\,\big(f^{cmp}_n(t)\big)^3,\qquad
 
 ## 2 奖励函数 —— 两版待选
 
-### 版本 A（如实披露辅助塑形，推荐）
+### 版本 A（如实披露辅助塑形）✅ 已选定
 ```latex
 \subsubsection{奖励函数}
 基础奖励为每时隙 Lyapunov 归一化边费用之负（式\ref{eq:cost_local}/\ref{eq:cost_offload}）：
