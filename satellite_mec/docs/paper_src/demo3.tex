@@ -1,0 +1,1590 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage[UTF8]{ctex}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs,array}
+\usepackage{graphicx}
+\usepackage{bm}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{multirow}
+\usepackage{cite}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{mathrsfs}
+\usepackage{subfigure}
+\usepackage{xeCJK}
+\usepackage{fontspec}
+
+\newtheorem{definition}{定义}
+\newtheorem{proposition}{命题}
+\newtheorem{remark}{注}
+\newtheorem{lemma}{引理}
+\newtheorem{theorem}{定理}
+
+% ============================================================
+% 自定义命令
+% ============================================================
+\newcommand{\QF}{Q^F}
+\newcommand{\QB}{Q^B}
+\newcommand{\DoDn}{DoD_n}
+\newcommand{\Lcal}{\mathcal{L}}
+\newcommand{\Ncal}{\mathcal{N}}
+\newcommand{\Tcal}{\mathcal{T}}
+\newcommand{\Wcal}{\mathcal{W}}
+\newcommand{\Ical}{\mathcal{I}}
+
+\begin{document}
+\title{卫星边缘网络下电池感知的任务卸载}
+\author{}
+\date{}
+\maketitle
+
+% ============================================================
+\section{摘要}
+% ============================================================
+
+在 6G 卫星-地面综合网络中，卫星边缘计算（SEC）成为为海量物联网（IoT）终端提供
+实时计算服务的关键技术。然而，卫星边缘计算的部署使星上计算能耗大幅增加，
+尤其在地影区卫星完全依赖电池供电，有可能引起深度放电加速电池容量衰减，
+严重威胁卫星在轨寿命。针对上述问题，本文研究卫星边缘计算网络中电池感知的
+多跳任务卸载问题。首先，采用半指数函数量化放电深度与电池寿命损耗的非线性关系。
+然后引入Lyapunov优化框架，将问题形式化为以在任务截止时间之前最小化长期电池健康
+损耗为目标、同时保证队列稳定性与放电深度约束的长期随机优化问题。并设计
+Lyapunov理论塑形奖励驱动的基于参数共享MAPPO的分布式在线调度算法求解，
+使神经网络策略在优化过程中隐式逼近理论最优解。仿真结果表明，与 TD3-Sched、MHSPO、GDCO 及本地卸载等基准相比，所提算法在保持第一梯队端到端时延与稳定队列的同时，将系统累计电池健康损耗降至最强基准的约三分之一、系统能耗降至约一半，仅以约 1--5 个百分点的用户满意度为代价，在电池寿命与服务质量之间取得了良好的多目标权衡。
+
+\noindent\textbf{关键词：}卫星网络，边缘计算，任务卸载，电池寿命
+
+% ============================================================
+\section{引言}
+% ============================================================
+
+% 第一段：宏观背景
+卫星网络自诞生以来，长期被视为实现全球无缝覆盖与灾备通信的核心基础设施。
+但近年来，随着星上处理能力的持续增强，卫星正逐步从单纯的传输中继向在轨计算转变，
+推动了多址边缘计算（MEC）与卫星网络的深度融合\cite{zhang2024mhspo}。
+在轨计算使任务得以直接在卫星上计算处理，
+有效规避了卫星至地面数据中心的长距离传播时延，
+并缓解了下行链路带宽有限所导致的拥塞问题。
+这一趋势为LEO卫星网络中的实时计算服务开辟了新的可能。
+
+% 第二段：星间卸载的局限性
+针对上述趋势，在MEC卫星网络的星间卸载已有大量研究，
+现有工作多采用多跳转发机制，
+通过将任务沿多跳路径转发至轻载卫星执行，
+以充分利用星座的协同计算能力\cite{1}。
+然而，多跳方案的决策复杂度随星座规模与跳数增长，
+且依赖全局拓扑状态信息。
+在LEO卫星网络的高速动态拓扑下，
+远端状态的获取不可避免地引入传播时延与排队时延，
+导致决策节点所依赖的状态信息严重失真，
+难以适用于资源受限的星上处理器\cite{2}。
+
+% 第三段：现有工作在电池建模上的局限性
+现有LEO卫星边缘网络计算部分工作虽考虑了卫星能耗约束，
+但均以瞬时能耗为度量指标\cite{3}，
+忽视了电池放电深度（DoD）对寿命损耗的非线性累积效应。
+LEO卫星电池的寿命损耗由DoD通过非线性电化学机制决定：
+在高DoD状态下，相同的能耗所造成的寿命损耗
+远大于低DoD状态\cite{4}，
+以瞬时能耗为目标的调度策略无法感知电池的当前健康状态，
+长期运行将加速电池老化，威胁卫星的在轨寿命\cite{5}。
+
+% 第四段：本文具体面临的挑战
+在上述背景下，本文面临以下几个挑战：
+首先，锂电池的寿命损耗并非与能耗线性相关，
+而是随放电深度（DoD）非线性加速增大。
+如何将这一非线性效应引入调度目标，
+使调度器能够感知电池的当前健康状态而非仅计算本次能耗，
+是实现电池寿命保护的核心难题。
+其次，LEO卫星网络拓扑高速变化，
+星上处理器资源有限，
+要求调度算法必须在极低复杂度下完成实时决策，
+同时避免依赖全局状态信息。
+如何在保证最优性的前提下降低算法复杂度，
+是工程可行的关键约束。
+
+% 第五段：本文方案与贡献
+针对以上挑战，本文面向Walker星座的网络拓扑，
+提出一种电池寿命感知的LEO卫星边缘计算任务卸载策略。
+本文的主要贡献总结如下：
+\begin{itemize}
+    \item 引入DoD感知的半指数电池损耗函数，
+    将锂离子电池非线性退化特性纳入优化目标；
+    通过定义DoD虚拟队列并结合一阶泰勒线性化，
+    在Lyapunov漂移加惩罚框架内将非线性电池约束转化为
+    可优化的线性代理目标，
+    在理论上保证队列稳定性、DoD长期约束满足与
+    电池损耗最小化的三重权衡。
+
+    \item 设计Lyapunov理论塑形奖励驱动的参数共享MAPPO
+    分布式调度算法：将每时隙Lyapunov子问题的边费用直接映射为
+    强化学习奖励，使神经网络策略在优化过程中隐式逼近理论最优解；
+    同时采用参数共享机制使算法具备跨卫星泛化能力，
+    训练复杂度与卫星规模解耦。
+
+    \item 我们通过仿真验证了所提方案的有效性。仿真结果表明，与 TD3-Sched、MHSPO、GDCO 及本地卸载等基准相比，所提算法将系统累计电池健康损耗降至最强基准的约三分之一（较 MHSPO、TD3-Sched 分别降低约 65\% 与 60\%）、系统能耗降至约一半，同时维持第一梯队的端到端时延与稳定的队列积压，仅以约 1--5 个百分点的用户满意度为代价；消融实验进一步验证了电池感知与强化学习两个组件缺一不可。
+\end{itemize}
+
+本文其余部分组织如下：
+第~\ref{sec:related}~节回顾相关工作；
+第~\ref{sec:system_model}~节介绍系统建模；
+第~\ref{sec:algorithm}~节给出算法框架；
+第~\ref{sec:simulation}~节展示仿真结果；
+第~\ref{sec:conclusion}~节总结全文。
+
+% ============================================================
+\section{相关工作}
+\label{sec:related}
+% ============================================================
+
+\subsection{MEC卫星网络中的计算卸载}
+
+卫星边缘计算将计算从"随时"延伸到"随地"。
+在MEC与卫星网络融合的相关研究中，
+卫星逐步从单纯的传输节点演变为直接处理计算任务的在轨计算平台。
+已有工作从架构设计、网络元素部署和计算卸载方案等多个维度展开研究，
+但大多数工作仅考虑单星计算，
+即用户将任务卸载至视距范围内的单颗卫星独立处理，
+忽视了卫星间的协作计算能力，
+在任务负载不均衡时会导致热点卫星过载、稀疏区域资源闲置。
+
+\subsection{星间协作卸载}
+
+文献\cite{zhang2024mhspo}提出了MEC卫星网络中的多跳对等卸载方案，
+通过Lyapunov框架与延迟在线学习技术，
+在不依赖未来任务到达信息的条件下实现近最优的分布式调度，
+是本文系统模型和算法框架的重要参考。
+然而，该工作以瞬时能耗为度量，
+未考虑电池放电深度对寿命损耗的非线性影响。
+
+\subsection{卫星电池感知调度}
+
+文献\cite{chen2025tasri}研究了卫星边缘计算中的电池感知能量优化问题，
+通过对数寿命模型量化放电深度与电池寿命的关系，
+并在在线凸优化框架下提出模式感知调度算法。
+然而，该工作聚焦于单星场景，
+未考虑多星协作卸载对电池寿命均衡的影响。
+
+本文在上述工作基础上，同时引入多跳星间卸载和DoD感知电池损耗建模，
+采用半指数函数更准确地刻画高DoD区域的急剧退化特性，
+填补了现有工作在星座级电池寿命保护方面的空白。
+
+% ============================================================
+\section{系统建模}
+\label{sec:system_model}
+% ============================================================
+
+\subsection{网络模型}
+
+本文的卫星网络拓扑参考Walker星座，共$P$个轨道面，
+每面$S$颗卫星，卫星总数$N = P \times S$。
+本文采用快照思想对卫星网络的动态特性建模，引入两个时间尺度。
+在粗时间尺度上，运行时间线被离散化为若干快照，
+快照内网络拓扑固定，快照间拓扑可变；
+在细时间尺度上，每个快照进一步划分为多个时隙，
+时隙长度为$\tau$（s），快照$s$内的时隙集合记为$\mathcal{T}_s$。
+在同一快照内，网络拓扑、星间链路容量$b_{nm}$和传播时延$T_{nm}$
+保持不变；快照间上述参数可变。
+调度决策在每个时隙$t \in \mathcal{T}_s$内执行。
+
+卫星网络拓扑建模为图$\mathcal{G} = (\mathcal{V}, \mathcal{E})$，
+其中$\mathcal{V}$为所有卫星MEC节点的集合，
+索引为$\mathcal{N} = \{1, \ldots, N\}$，
+$\mathcal{E}$为星间链路（ISL）集合。
+在快照假设下，$\mathcal{G}$在快照内固定，快照间可变。
+卫星$n$的邻居集合记为$\mathcal{N}_n$，
+星间链路$(n,m)$的传输速率$b_{nm}$（bits/s）
+和传播时延$T_{nm}$（s）在快照内保持固定，
+作为已知参数直接使用。
+
+与文献\cite{zhang2024mhspo}一致，
+本文假设用户任务请求的消息体量小且固定，
+上行传输可即时完成且上行链路不拥塞，
+因此不显式建模上行传输时延。
+每个计算任务$i$由四元组描述：
+\begin{equation}
+    \text{任务}~i = (s^i,~h^i,~t^i_0,~d^i_{\max}),
+    \label{eq:task_tuple}
+\end{equation}
+其中$s^i \in [s_{\min}, s_{\max}]$（bits）为任务大小；
+$h^i$（cycles/bit）为每bit所需CPU周期数；
+$t^i_0$为任务请求到达接入卫星的时隙；
+$d^i_{\max}$（s）为任务截止时间。
+任务在$t^i_0$时刻直接进入接入卫星的转发队列，
+从$t^i_0 + 1$时隙开始接受调度决策。
+
+系统为每个活跃任务$i$维护运行时状态记录
+$\mathcal{R}^i = (k^i,~\Delta^i_{trans})$，
+其中$k^i \in \{0,1,\ldots,K_{\max}\}$为已转发跳数，
+初始值$k^i=0$；
+$\Delta^i_{trans}$（s）为已累计ISL传输时延，
+初始值$\Delta^i_{trans}=0$。
+每当任务经ISL从卫星$n$转发至邻居$m$时，
+运行时状态同步更新：
+\begin{equation}
+    k^i \leftarrow k^i + 1,\qquad
+    \Delta^i_{trans} \leftarrow \Delta^i_{trans}
+    + \frac{s^i}{b_{nm}} + T_{nm}。
+    \label{eq:runtime_update}
+\end{equation}
+
+设$\mathcal{I}$为所有用户集合，
+$\mathcal{I}(t)$为时隙$t$的活跃用户集合，
+$\mathcal{I}_n(t)$为时隙$t$内卫星$n$覆盖范围内的活跃用户集合。
+本文假设每个用户在任意时刻至多接入一颗卫星，
+故$\mathcal{I}_n(t)$两两不相交，
+满足$\bigcup_{n \in \mathcal{N}} \mathcal{I}_n(t) = \mathcal{I}(t)$。
+主要网络参数汇总见表~\ref{tab:notation}。
+
+% ============================================================
+\subsection{准入与调度设计概述}
+% ============================================================
+
+本文将准入控制与调度决策分离设计，与\cite{zhang2024mhspo}一致。
+准入控制采用基于Lyapunov漂移推导的独立阈值规则：
+当转发队列任务数$N^F_n(t) \leq \theta_n$时接受新到达任务，
+否则拒绝。
+准入阈值$\theta_n$由系统计算容量和任务到达率离线确定：
+\begin{equation}
+    \theta_n = 2\left(E_n
+    + (2|\mathcal{N}_n|+1)\lambda_{\max}\right),
+    \label{eq:theta}
+\end{equation}
+其中$E_n$（个）为卫星$n$每时隙最多分发到计算队列的任务数上限，
+$\lambda_{\max}$为单时隙最大任务到达数（个）。
+
+调度决策通过多智能体强化学习（MAPPO）实现，
+在Lyapunov塑形奖励中引入电池健康损耗惩罚，
+具体设计见第~\ref{sec:algorithm}~节。
+
+% ============================================================
+\subsection{队列模型}
+% ============================================================
+
+\subsubsection{转发队列}
+
+每个MEC卫星$n$维护转发队列$Q^F_n(t)$，
+更新方程为\cite{zhang2024mhspo}：
+\begin{equation}
+    Q^F_n(t\!+\!1) = \max\!\left\{Q^F_n(t)
+    - \alpha_n(t) - \beta_n(t),~0\right\}
+    + a_n(t)
+    + \sum_{m \in \mathcal{N}_n}\!\beta_{mn}(t),
+    \label{eq:QF_update}
+\end{equation}
+其中各聚合量定义如下。
+$\alpha_n(t)$为时隙$t$内卫星$n$分发到计算队列的总任务数据量（bits）：
+\begin{equation}
+    \alpha_n(t) = \sum_{i \in Q^F_n(t)} s^i \alpha^i_n(t)。
+\end{equation}
+$\beta_{nm}(t)$为时隙$t$内从卫星$n$转发给邻居$m$的总任务数据量（bits）：
+\begin{equation}
+    \beta_{nm}(t) = \sum_{i \in Q^F_n(t)} s^i \beta^i_{nm}(t)。
+\end{equation}
+$\beta_n(t)$为卫星$n$转发给所有邻居的总任务数据量（bits）：
+\begin{equation}
+    \beta_n(t) = \sum_{m \in \mathcal{N}_n} \beta_{nm}(t)。
+\end{equation}
+$\beta_{mn}(t)$为时隙$t$内从邻居$m$转发给卫星$n$的总任务数据量（bits）：
+\begin{equation}
+    \beta_{mn}(t) = \sum_{i \in Q^F_m(t)} s^i \beta^i_{mn}(t)。
+\end{equation}
+
+与\cite{zhang2024mhspo}一致，
+各卫星在每时隙通过控制面消息与邻居共享队列状态、
+链路质量信息及调度决策结果。
+由于控制面交互消息体量小，
+本文假设此通信可在时隙内完成且时延可忽略。
+
+任务到达项$a_n(t)$为时隙$t$内被接受并进入转发队列的任务数据量：
+\begin{equation}
+    a_n(t) = \sum_{i \in \mathcal{I}_n(t)} s^i \cdot a^i_n(t),
+    \label{eq:arrival}
+\end{equation}
+其中$a^i_n(t) \in \{0,1\}$为任务$i$的准入决策。
+被接受的任务在时隙$t$末尾进入$Q^F_n(t+1)$，
+从时隙$t+1$开始接受调度决策，不参与时隙$t$的调度过程。
+
+转发队列还接收来自邻居的多跳转发任务
+（式\eqref{eq:QF_update}中$\sum_{m}\beta_{mn}(t)$项），
+这些任务携带运行时状态$\mathcal{R}^i$，供后续调度决策使用。
+
+\subsubsection{计算队列}
+
+计算队列$Q^B_n(t)$记录待处理任务的总数据量（bits），
+更新方程为\cite{zhang2024mhspo}：
+\begin{equation}
+    Q^B_n(t\!+\!1) = \max\!\left\{Q^B_n(t)
+    - \sum_{i \in Q^B_n(t)} r^i_n(t),~0\right\}
+    + \alpha_n(t),
+    \label{eq:QB_update}
+\end{equation}
+其中$r^i_n(t)$为时隙$t$内任务$i$的处理数据量（bits）。
+任务$i$一旦处理完成，立即从$Q^B_n$中移除；
+$\alpha_n(t)$在时隙$t$末尾加入$Q^B_n(t+1)$，
+从时隙$t+1$开始被处理。
+
+此外，定义$N^B_n(t)$为计算队列中的任务个数：
+\begin{equation}
+    N^B_n(t) = |\{i : i \in Q^B_n(t)\}|。
+\end{equation}
+
+% ============================================================
+\subsection{计算模型}
+% ============================================================
+
+每时隙，卫星$n$为其全部本地任务选择单一计算频率$f^{cmp}_n(t)$，
+由每时隙 drift-plus-penalty 子问题
+\begin{equation}
+    \min_{0 \le f \le c_n}\; V_f\,\kappa f^3\tau - Q^{B}_n(t)\,f\,\tau
+\end{equation}
+求解，其中$Q^{B}_n(t)$为计算队列剩余CPU周期总量，$c_n$为CPU频率上限。
+一阶条件给出闭式解$f^{lyap}_n(t) = \sqrt{Q^{B}_n(t)/(3 V_f \kappa)}$。
+为保证截止可行，在公平份额调度（每任务获$f/N^B_n$）下设死线下限
+\begin{equation}
+    f^{floor}_n(t) = N^B_n(t)\cdot\max_{i \in Q^B_n(t)}
+    \frac{\rho^i_n(t)}{\Delta^i_n(t)},
+\end{equation}
+其中$\rho^i_n(t)$、$\Delta^i_n(t)$分别为任务$i$的剩余CPU周期与剩余时间。
+最终计算频率为
+\begin{equation}
+    f^{cmp}_n(t) = \mathrm{clip}\!\big(\max(f^{lyap}_n(t),\, f^{floor}_n(t)),\, 0,\, c_n\big),
+    \label{eq:cpu_alloc}
+\end{equation}
+权重$V_f$经校准使$f^{cmp}$在满队列工况下恰达$c_n$。
+分配给本地任务$i$的频率为$f^{cmp}_n(t)/N^B_n(t)$，时隙$t$内其处理数据量为：
+\begin{equation}
+    r^i_n(t) = \min\!\left\{
+    \frac{f^{cmp}_n(t) \cdot \tau}{h^i N^B_n(t)},~
+    s^i - \sum_{l=0}^{t-1} r^i_n(l)\right\}。
+    \label{eq:workload}
+\end{equation}
+任务$i$在卫星$n$的计算时延为：
+\begin{equation}
+    d^{i,C}_n = \Delta t \cdot \tau,\quad
+    \text{满足}\quad
+    \sum_{l=t+1}^{t+\Delta t} r^i_n(l) = s^i，
+    \label{eq:comp_delay}
+\end{equation}
+其中$\Delta t$为完成任务所需的时隙数。
+
+% ============================================================
+\subsection{完整端到端时延}
+% ============================================================
+
+采用受限多跳逐跳卸载策略（$K_{\max}=3$），
+任务$i$的端到端时延为：
+\begin{equation}
+    d^i_{total} =
+    \underbrace{\Delta^i_{trans}}_{\text{累计ISL传输时延}}
+    + \underbrace{d^{i,C}_{n^i_{final}}}_{\text{计算时延}},
+    \label{eq:e2e_delay}
+\end{equation}
+其中$n^i_{final}$为最终执行计算的卫星节点。
+
+剩余时间窗口从任务进入转发队列的时隙$t^i_0$开始计算，
+随时隙$t$动态减少：
+\begin{equation}
+    d^i_{remain}(t) = d^i_{\max}
+    - (t - t^i_0)\cdot\tau
+    - \Delta^i_{trans},
+    \quad t \geq t^i_0 + 1。
+    \label{eq:d_remain}
+\end{equation}
+其中$(t - t^i_0)\cdot\tau$刻画任务从到达接入卫星
+到当前时隙经历的等待与处理时间，
+$\Delta^i_{trans}$为已完成的所有ISL跳的
+实际传输时间与传播时延之和，
+按式\eqref{eq:runtime_update}逐跳累积。
+
+在仿真评估中，任务的真实端到端时延采用：
+\begin{equation}
+    d^i_{real} = (t^i_{finish} - t^i_0)\cdot\tau,
+    \label{eq:d_real}
+\end{equation}
+其中$t^i_{finish}$为任务完成计算并退出系统的时隙，
+$d^i_{real}$天然包含排队等待、ISL传输和计算的全部时延，
+在仿真中用于验证$d^i_{real} \leq d^i_{\max}$是否满足。
+
+任务$i$在卫星$n$卸载给邻居$m$的截止时间可行性条件为：
+\begin{equation}
+    \frac{s^i}{b_{nm}} + T_{nm}
+    + \hat{d}^{i,C}_m \leq d^i_{remain}(t),
+    \label{eq:deadline}
+\end{equation}
+其中$\hat{d}^{i,C}_m$为邻居$m$对任务$i$的预估计算时延：
+\begin{equation}
+    \hat{d}^{i,C}_m = \left\lceil
+    \frac{s^i h^i (N^B_m(t) + 1)}{c_m \cdot \tau}
+    \right\rceil \cdot \tau。
+    \label{eq:est_comp_delay}
+\end{equation}
+$+1$表示任务$i$加入后的队列增量，
+式\eqref{eq:est_comp_delay}为保守估计，
+有利于保证截止时间约束不被违反。
+
+当$k^i = K_{\max}$时转发动作不可行，
+截止时间可行性条件退化为本地处理条件：
+\begin{equation}
+    \hat{d}^{i,C}_n \leq d^i_{remain}(t)。
+    \label{eq:deadline_local}
+\end{equation}
+若本地处理亦不满足式\eqref{eq:deadline_local}，
+则任务暂留队列等待下一时隙重新调度；
+若$d^i_{remain}(t) \leq 0$，
+任务视为超时失败并从队列中移除。
+
+% ============================================================
+\subsection{放电深度（DoD）与电池寿命损耗模型}
+% ============================================================
+
+$DoD_n(t)$表示时隙$t$开始时卫星$n$的放电深度状态，
+与队列变量$Q^F_n(t)$、$Q^B_n(t)$的时序定义保持一致，
+均为时隙$t$开始时的已知量，可直接用于时隙$t$的调度决策。
+
+定义时隙$t$的净DoD增量为：
+\begin{equation}
+    \delta_n(t) = \Delta DoD^{comp}_n(t)
+    + \Delta DoD^{trans}_n(t)
+    - \Delta DoD^{solar}_n(t),
+    \label{eq:delta_dod}
+\end{equation}
+其中各分量定义如下。
+
+\subsubsection{计算DoD增量}
+
+计算功耗采用标准立方功耗模型\cite{zhang2024mhspo}：
+\begin{equation}
+    P^{comp}_n(t) = \kappa\,\big(f^{cmp}_n(t)\big)^3,
+    \label{eq:comp_power}
+\end{equation}
+其中$\kappa$（J/cycle$^3$）为芯片架构能耗系数。
+对应的时隙$t$内计算DoD增量为：
+\begin{equation}
+    \Delta DoD^{comp}_n(t) =
+    \frac{\tau}{E^{cap}_n}\,\kappa\,\big(f^{cmp}_n(t)\big)^3,
+    \label{eq:dod_comp}
+\end{equation}
+其中$E^{cap}_n$（J）为电池总容量。
+
+\subsubsection{传输DoD增量}
+
+由于卫星以固定功率$P_t$（W）发射，
+传输DoD增量为：
+\begin{equation}
+    \Delta DoD^{trans}_n(t) =
+    \frac{P_t}{E^{cap}_n} \sum_{m \in \mathcal{N}_n}
+    \frac{\beta_{nm}(t)}{b_{nm}},
+    \label{eq:dod_trans}
+\end{equation}
+其中$\frac{\beta_{nm}(t)}{b_{nm}}$（s）为实际传输时间。
+
+\subsubsection{太阳能充电DoD减少量}
+
+\begin{equation}
+    \Delta DoD^{solar}_n(t) =
+    \begin{cases}
+        \dfrac{P^{solar}_n \cdot \tau}{E^{cap}_n},
+            & \text{卫星在光照区}~(\xi_n(t)=1) \\[6pt]
+        0,
+            & \text{卫星在地影区}~(\xi_n(t)=0)
+    \end{cases}
+    \label{eq:dod_solar}
+\end{equation}
+其中$P^{solar}_n$（W）为太阳能板充电功率，
+$\xi_n(t) \in \{0,1\}$为光照状态，
+由轨道参数计算。
+
+\subsubsection{完整DoD动态方程}
+
+为便于Lyapunov漂移推导，定义DoD的未截断演进量：
+\begin{equation}
+    DoD^{uncap}_n(t\!+\!1) = DoD_n(t) + \delta_n(t)。
+    \label{eq:dod_uncap}
+\end{equation}
+系统状态的实际演进采用截断版：
+\begin{equation}
+    DoD_n(t\!+\!1) = \min\!\Big\{\max\!\Big(
+    DoD_n(t) + \delta_n(t),~0\Big),
+    ~DoD_{\max}\Big\},
+    \label{eq:dod_dynamics}
+\end{equation}
+其中$DoD_{\max} = 0.8$对应安全放电下限$SoC_{\min} = 0.2$。
+
+\subsubsection{DoD虚拟队列}
+
+为将DoD约束纳入Lyapunov框架，定义虚拟队列：
+\begin{equation}
+    Z_n(t+1) = \max\left\{Z_n(t) + \delta_n(t),\ 0\right\},
+    \label{eq:virtual_queue}
+\end{equation}
+初始条件$Z_n(0) = 0$，$DoD_n(0) \in [0, DoD_{\max}]$。
+$Z_n(t)$追踪历史净放电量超过平衡值（0）的累积量，
+$Z_n(t)$有界等价于长期DoD约束满足。
+
+每时隙净DoD增量$\delta_n(t)$有界，
+其上界$\delta_{\max,n}$由最坏情况确定：
+\begin{equation}
+    \delta_{\max,n} = \frac{1}{E^{cap}_n}\left(
+    \tau \kappa c^3_n
+    + \frac{P_t \cdot |\mathcal{N}_n| \cdot s_{\max}}{b_{\min}}
+    \right),
+    \label{eq:delta_max}
+\end{equation}
+其中第一项对应$N^B_n(t)=1$时的最大计算DoD增量，
+第二项对应所有邻居链路同时以最大数据量、最低速率传输时的最大传输DoD增量。
+虚拟队列漂移的有界常数为$B^Z_n = \frac{1}{2}\delta^2_{\max,n}$。
+
+\textbf{假设1}（长期充放电可平衡条件）：
+存在可行的调度策略，使得系统长期平均能耗不超过长期平均太阳能充电量：
+\begin{equation}
+    \limsup_{T\to\infty}\frac{1}{T}\sum_{t=0}^{T-1}
+    \mathbb{E}[\delta_n(t)] \leq 0,
+    \quad \forall n \in \mathcal{N}。
+    \label{eq:assumption1}
+\end{equation}
+
+\subsubsection{半指数寿命损耗函数}
+
+锂离子电池寿命损耗与放电深度呈非线性关系，
+半指数函数能准确捕捉高DoD区域急剧上翘的物理特性，
+系数0.8由实际锂离子电池数据拟合得到~\cite{chen2025tasri}：
+\begin{equation}
+    \mathcal{L}(DoD_n(t)) = DoD_n(t) \times
+    10^{0.8(DoD_n(t)-1)},
+    \label{eq:health_loss}
+\end{equation}
+其导数为：
+\begin{equation}
+    \mathcal{L}'(DoD_n(t)) = 10^{0.8(DoD_n(t)-1)}
+    \left(1 + 0.8\ln 10 \cdot DoD_n(t)\right)。
+    \label{eq:health_loss_deriv}
+\end{equation}
+
+\subsubsection{每时隙健康损耗增量（一阶泰勒线性化）}
+
+$\mathcal{L}(DoD)$关于决策变量是非线性函数，
+一阶泰勒线性化将其转化为关于DoD增量的线性函数，
+展开点固定在时隙开始时的已知量$DoD_n(t)$。
+
+预测的$t+1$时隙计算队列任务数为：
+\begin{equation}
+    N^{B*}_n(t+1) = N^B_n(t) - D_n(t) + \bar{\alpha}_n,
+    \label{eq:QB_predict}
+\end{equation}
+其中$D_n(t)$为时隙$t$完成处理的任务数（时隙开始时已知），
+$\bar{\alpha}_n$为本地处理任务数的历史滑动平均：
+\begin{equation}
+    \bar{\alpha}_n(t) = (1-\mu)\bar{\alpha}_n(t-1)
+    + \mu\alpha^{num}_n(t-1),
+    \label{eq:alpha_avg}
+\end{equation}
+其中$\mu \in (0,1)$为平滑系数，初始值$\bar{\alpha}_n(0) = E_n/2$。
+
+基于$N^{B*}_n(t+1)$，任务$i$完整处理周期的预测DoD增量为：
+\begin{equation}
+    \Delta DoD^{i,comp}_n =
+    \frac{\kappa \cdot s^i h^i \cdot c^2_n}
+    {E^{cap}_n \cdot \left(N^{B*}_n(t+1)\right)^2}。
+    \label{eq:delta_dod_comp_task}
+\end{equation}
+
+对任务$i$被分配到本地处理的情况，
+预测的健康损耗增量为：
+\begin{equation}
+    \Delta\mathcal{L}^{i,comp}_n =
+    \mathcal{L}'(DoD_n(t)) \cdot
+    \Delta DoD^{i,comp}_n。
+    \label{eq:delta_L_comp}
+\end{equation}
+
+对任务$i$卸载给邻居$m$的情况，
+传输健康损耗增量为：
+\begin{equation}
+    \Delta\mathcal{L}^{i,trans}_n =
+    \mathcal{L}'(DoD_n(t)) \cdot
+    \frac{P_t}{E^{cap}_n} \cdot
+    \frac{s^i}{b_{nm}}。
+    \label{eq:delta_L_trans}
+\end{equation}
+
+% ============================================================
+% 符号表
+% ============================================================
+\begin{table}[t]
+\centering
+\caption{主要符号说明}
+\label{tab:notation}
+\begin{tabular}{ll}
+\toprule
+\textbf{符号} & \textbf{含义} \\
+\midrule
+$N, P, S$ & 卫星总数、轨道面数、每面卫星数 \\
+$\mathcal{N}_n$ & 卫星$n$的邻居集合 \\
+$c_n$ & 卫星$n$的CPU频率（cycles/s） \\
+$b_{nm}$ & 星间链路传输速率（bits/s），快照内固定 \\
+$T_{nm}$ & 星间链路传播时延（s），快照内固定 \\
+$\tau$ & 时隙长度（s） \\
+$s^i, h^i, d^i_{\max}$ & 任务大小（bits）、每bit CPU周期数、截止时间（s） \\
+$s_{\min}, s_{\max}$ & 任务数据量下界、上界（bits） \\
+$Q^F_n(t)$ & 转发队列总数据量（bits） \\
+$Q^B_n(t)$ & 计算队列总数据量（bits） \\
+$N^B_n(t)$ & 计算队列任务数（个） \\
+$\hat{N}^B_n$ & 时隙内临时计算队列任务数（个） \\
+$N^{B*}_n(t+1)$ & 预测的$t+1$时隙计算队列任务数（个） \\
+$N^F_n(t)$ & 转发队列任务数（个） \\
+$\tilde{N}^F_n(t)$ & 扰动转发队列任务数，$N^F_n(t) - \theta_n$（个） \\
+$\mathcal{L}^{new}_{\max}$ & 归一化健康损耗系数，见式\eqref{eq:norm1} \\
+$\alpha^i_n(t)$ & 任务$i$在卫星$n$的本地处理决策（0或1） \\
+$\alpha_n(t)$ & 时隙$t$卫星$n$分发到计算队列的总数据量（bits） \\
+$\alpha^{num}_n(t)$ & 时隙$t$决定本地处理的任务数量（个） \\
+$\beta^i_{nm}(t)$ & 任务$i$从卫星$n$转发给邻居$m$的决策（0或1） \\
+$\beta_{nm}(t)$ & 时隙$t$从卫星$n$转发给邻居$m$的总数据量（bits） \\
+$\beta_n(t)$ & 时隙$t$卫星$n$转发给所有邻居的总数据量（bits） \\
+$\beta_{mn}(t)$ & 时隙$t$从邻居$m$转发给卫星$n$的总数据量（bits） \\
+$\hat{d}^{i,C}_m$ & 任务$i$在邻居$m$的预估计算时延（s） \\
+$d^i_{remain}(t)$ & 任务$i$在时隙$t$的剩余可用时间窗口（s） \\
+$d^i_{real}$ & 任务$i$的真实端到端时延（s） \\
+$t^i_{finish}$ & 任务$i$完成计算并退出系统的时隙 \\
+$DoD_n(t), DoD_{\max}$ & 放电深度、安全上限（0.8） \\
+$DoD^{uncap}_n(t+1)$ & 时隙$t$的DoD未截断演进量 \\
+$\delta_n(t)$ & 时隙$t$净DoD增量 \\
+$\delta_{\max,n}$ & 卫星$n$单时隙净DoD增量上界，见式\eqref{eq:delta_max} \\
+$\xi_n(t)$ & 光照状态（1：光照区，0：地影区） \\
+$\tau^{switch}_n(t)$ & 距下次光照状态切换的剩余时隙数 \\
+$\rho^{sun}_n$ & 卫星$n$的光照占比，由轨道参数确定 \\
+$E^{cap}_n$ & 电池总容量（J） \\
+$P_t, P^{solar}_n$ & 发射功率、太阳能充电功率（W） \\
+$\bar{P}^{comp}_n, \bar{P}^{trans}_n$ & 长期平均计算功耗、传输功耗（W） \\
+$\mathcal{L}(\cdot)$ & 电池健康损耗函数 \\
+$Z_n(t)$ & DoD虚拟队列，追踪历史净放电违约量 \\
+$D_n(t)$ & 时隙$t$完成处理的任务数（个） \\
+$\bar{\alpha}_n,~\mu$ & 本地处理任务数滑动平均、平滑系数 \\
+$\kappa$ & 芯片能耗系数（J/cycle$^3$） \\
+$\theta_n$ & 准入控制任务数阈值（个） \\
+$E_n$ & 卫星$n$每时隙最多分发到计算队列的任务数上限（个） \\
+$B^{bits}_{\max}$ & 单条星间链路单时隙最大传输数据量（bits） \\
+$b_{\max}, b_{\min}$ & 星间链路传输速率上界、下界（bits/s） \\
+$\lambda_{\max}$ & 单时隙最大任务到达数（个） \\
+$V$ & Lyapunov权衡参数 \\
+$\eta$ & DoD约束惩罚系数 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{算法框架}
+\label{sec:algorithm}
+% ============================================================
+
+\subsection{问题形式化}
+
+基于第~\ref{sec:system_model}~节的系统建模，
+本文将星间调度问题形式化为如下长期优化问题：
+
+\begin{equation}
+\begin{aligned}
+\mathbf{P1:} \quad &\min_{a,\alpha,\beta} \quad
+\lim_{T \to \infty} \frac{1}{T} \sum_{t=0}^{T-1}
+\sum_{n \in \mathcal{N}} \mathbb{E}\left[
+\Delta\mathcal{L}^{comp}_n(t) + \Delta\mathcal{L}^{trans}_n(t)
+\right] \\
+\text{s.t.} \quad
+&\text{(C1)} \quad \alpha^i_n(t) + \sum_{m \in \mathcal{N}_n}
+\beta^i_{nm}(t) \leq 1,
+\quad \forall i \in Q^F_n(t),\ n \in \mathcal{N} \\
+&\text{(C2)} \quad \frac{s^i}{b_{nm}} + T_{nm}
++ \hat{d}^{i,C}_m \leq d^i_{remain}(t),
+\quad \forall \beta^i_{nm}(t)=1 \\
+&\text{(C3)} \quad k^i \leq K_{\max},
+\quad \forall i \in \mathcal{I} \\
+&\text{(C4)} \quad \lim_{T\to\infty} \frac{1}{T}
+\sum_{t=0}^{T-1} \mathbb{E}[Q^F_n(t) + Q^B_n(t)] < \infty,
+\quad \forall n \in \mathcal{N} \\
+&\text{(C5)} \quad \limsup_{T\to\infty}\frac{1}{T}
+\sum_{t=0}^{T-1}\mathbb{E}[\delta_n(t)] \leq 0,
+\quad \forall n \in \mathcal{N}
+\end{aligned}
+\label{eq:P1}
+\end{equation}
+
+其中决策变量包括准入决策$a = \{a^i_n(t)\}$、
+本地处理决策$\alpha = \{\alpha^i_n(t)\}$
+和转发决策$\beta = \{\beta^i_{nm}(t)\}$。
+C1要求每个任务至多选择一个动作（本地处理、转发或暂留）。
+C2为转发截止时间可行性约束，通过动作掩码强制满足，不进入Lyapunov推导。
+C3为跳数约束。
+C4保证转发队列和计算队列的长期稳定性，
+C5通过虚拟队列$Z_n(t)$保证DoD长期约束满足。
+
+% ============================================================
+\subsection{Lyapunov优化框架}
+% ============================================================
+
+\subsubsection{长期约束转化为虚拟队列}
+
+\textbf{C4的处理：扰动Lyapunov函数。}
+定义扰动转发队列$\tilde{Q}^F_n(t) = Q^F_n(t) - \theta_n$，
+引入扰动保证每颗卫星的转发队列维持在$\theta_n$附近，
+避免队列为空导致资源浪费\cite{zhang2024mhspo}。
+
+\textbf{C5的处理：DoD虚拟队列。}
+定义虚拟队列$Z_n(t)$（见式\eqref{eq:virtual_queue}），
+$Z_n(t)$有界等价于C5成立，
+将长期DoD约束转化为虚拟队列的稳定性问题。
+
+\subsubsection{联合Lyapunov函数}
+
+\begin{equation}
+L(\Theta(t)) = \frac{1}{2}\sum_{n \in \mathcal{N}}
+\left[\tilde{Q}^{F2}_n(t) + Q^{B2}_n(t) + Z^2_n(t)\right],
+\label{eq:lyapunov}
+\end{equation}
+其中$\Theta(t) = \{Q^F_n(t), Q^B_n(t), Z_n(t)\}_{n \in \mathcal{N}}$
+为系统状态向量。
+
+\subsubsection{漂移加惩罚上界}
+
+定义单时隙漂移：
+\begin{equation}
+\Delta(\Theta(t)) = \mathbb{E}[L(\Theta(t+1))
+- L(\Theta(t))\ |\ \Theta(t)]。
+\label{eq:drift}
+\end{equation}
+
+\textbf{定理0（漂移加惩罚上界）：}
+对任意可行的调度决策$(a(t), \alpha(t), \beta(t))$，有：
+
+\begin{equation}
+\begin{aligned}
+&\Delta(\Theta(t)) + V\cdot\mathbb{E}\left[
+\sum_n(\Delta\mathcal{L}^{comp}_n(t)
++ \Delta\mathcal{L}^{trans}_n(t))\bigg|\Theta(t)\right] \\
+\leq\ &B(t) + \sum_n\mathbb{E}\Bigg\{
+\underbrace{\tilde{Q}^F_n(t)\sum_i a^i_n(t)s^i}_{\text{准入项}} \\
+&+\sum_i\alpha^i_n(t)
+\underbrace{\left[s^i(Q^B_n(t) - \tilde{Q}^F_n(t))
++ V\Delta\mathcal{L}^{i,comp}_n
++ Z_n(t)\Delta DoD^{i,comp}_n\right]}_{c^{local}_n(i,t)} \\
+&+\sum_m\sum_i\beta^i_{nm}(t)
+\underbrace{\left[s^i(\tilde{Q}^F_m(t) - \tilde{Q}^F_n(t))
++ V\Delta\mathcal{L}^{i,trans}_n
++ Z_n(t)\Delta DoD^{i,trans}_n\right]}_{c^{offload}_{nm}(i,t)}
+\Bigg|\Theta(t)\Bigg\}
+\end{aligned}
+\label{eq:drift_penalty}
+\end{equation}
+
+其中$V > 0$为权衡参数，$B(t)$为有界常数项：
+
+\begin{equation}
+B(t) = \sum_n(B^F_n + B^B_n + B^Z_n)
+- \sum_n Q^B_n(t)\sum_i r^i_n(t)
+- \sum_n Z_n(t)\Delta DoD^{solar}_n(t),
+\label{eq:B_t}
+\end{equation}
+
+其中各固定常数为：
+\begin{equation}
+B^F_n = \frac{1}{2}(E_n
++ (2|\mathcal{N}_n|+1)\lambda_{\max})^2, \quad
+B^B_n = \frac{1}{2}(2E_n)^2, \quad
+B^Z_n = \frac{1}{2}\delta^2_{\max,n}。
+\label{eq:B_constants}
+\end{equation}
+
+% ============================================================
+\subsection{每时隙子问题分解}
+% ============================================================
+
+最小化漂移加惩罚上界等价于每时隙求解：
+
+\begin{equation}
+\mathbf{P2:} \quad \min_{a(t),\alpha(t),\beta(t)} \quad
+\sum_n\mathbb{E}\Bigg\{
+\tilde{Q}^F_n(t)\sum_i a^i_n(t)s^i
++\sum_i\alpha^i_n(t)c^{local}_n(i,t)
++\sum_m\sum_i\beta^i_{nm}(t)c^{offload}_{nm}(i,t)
+\Bigg|\Theta(t)\Bigg\}。
+\label{eq:P2}
+\end{equation}
+
+P2的目标函数可按卫星$n$分解为独立子问题。
+
+\subsubsection{准入子问题}
+
+最小化准入项关于$a^i_n(t)$是线性的，最优解退化为阈值规则：
+
+\begin{equation}
+a^i_n(t) = \begin{cases}
+1, & N^F_n(t) \leq \theta_n \\
+0, & \text{otherwise}
+\end{cases}
+\label{eq:admission}
+\end{equation}
+
+与\cite{zhang2024mhspo}中式(23)一致。
+
+\subsubsection{调度子问题（MAPPO近似求解）}
+
+对$Q^F_n(t)$中每个任务$i$，
+按$d^i_{remain}(t)$升序顺序决策，
+在可行动作集合$\mathcal{A}^{feasible}_i$中选择使边费用最小的动作：
+
+\begin{equation}
+a^{i*}_n(t) = \arg\min_{a \in \mathcal{A}^{feasible}_i} c^a_n(i,t)。
+\label{eq:scheduling}
+\end{equation}
+
+本文采用参数共享MAPPO通过神经网络学习近似最优策略，
+理由如下：边费用依赖$\Delta\mathcal{L}^{i,comp}_n$
+和$\Delta DoD^{i,comp}_n$的非线性结构；
+顺序决策下边费用随临时状态$\hat{N}^B_n$、$\hat{Z}_n$动态更新；
+状态空间包含DoD、邻居队列等高维信息，
+传统优化方法难以实时处理。
+
+% ============================================================
+\subsection{参数共享MAPPO算法设计}
+% ============================================================
+
+\subsubsection{整体框架}
+
+采用集中训练、分布式执行（CTDE）框架：
+训练阶段邻域Critic访问卫星$n$及其邻居的完整状态；
+执行阶段每颗卫星只用自己的局部状态驱动Actor网络，
+独立做出调度决策。
+所有卫星共用一套网络参数（参数共享），
+输入状态里加入卫星ID $n_{id}$区分不同卫星。
+
+\subsubsection{状态空间}
+
+每颗卫星$n$在对任务$i$做决策时的完整状态输入为：
+
+\begin{equation}
+\begin{aligned}
+s_n(t) = \Big[
+&\underbrace{n_{id}}_{\text{卫星ID}},\
+\underbrace{Q^F_n(t),\ \hat{N}^B_n,\ DoD_n(t),\
+\hat{Z}_n,\ \xi_n(t),\ \tau^{switch}_n(t)}_{\text{本地节点状态}}, \\
+&\underbrace{\{b_{nm},\ T_{nm},\ \tilde{Q}^F_m(t),\
+N^B_m(t),\ DoD_m(t)\}_{m \in \mathcal{N}_n}}_{\text{邻居状态}}, \\
+&\underbrace{s^i,\ h^i,\ k^i,\ \Delta^i_{trans},\
+d^i_{remain}(t)}_{\text{当前任务状态}}
+\Big]
+\end{aligned}
+\label{eq:state}
+\end{equation}
+
+其中$\hat{N}^B_n$和$\hat{Z}_n$为时隙内临时状态，
+随顺序决策动态更新；
+$\xi_n(t)$让智能体感知充放电状态；
+$\tau^{switch}_n(t)$让智能体预判充放电状态切换；
+邻居$m$的$DoD_m(t)$使智能体考虑星座级电池均衡。
+
+\subsubsection{动作空间}
+
+对任务$i$经动作掩码过滤后，可行动作集合为：
+
+\begin{equation}
+\mathcal{A}^{feasible}_i =
+\{local\}
+\cup \{m \in \mathcal{N}_n : \text{C2满足且}k^i < K_{\max}\}。
+\label{eq:feasible_actions}
+\end{equation}
+
+本地处理始终为可行动作。
+若$d^i_{remain}(t) \leq 0$则任务超时从队列移除。
+
+\subsubsection{奖励函数}
+
+对任务$i$执行动作$a$的基础奖励取每时隙 Lyapunov 归一化边费用之负：
+
+\begin{equation}
+r^{base,a}_n(i,t) = -\bar{c}^a_n(i,t),
+\label{eq:reward}
+\end{equation}
+
+归一化边费用（本地处理）：
+
+\begin{equation}
+\bar{c}^{local}_n(i,t) =
+\frac{1}{1+V}\cdot\frac{s^i(N^B_n(t) - \tilde{N}^F_n(t))}{s_{\max}\cdot\theta_n}
++ \frac{V}{1+V}\cdot\frac{\Delta\mathcal{L}^{i,comp}_n}{\mathcal{L}^{new}_{\max}}
++ \eta\cdot\frac{\hat{Z}_n\cdot\Delta DoD^{i,comp}_n}
+{Z_{\max}\cdot\Delta DoD_{\max}},
+\label{eq:cost_local}
+\end{equation}
+
+归一化边费用（转发给邻居$m$）：
+
+\begin{equation}
+\bar{c}^{offload}_{nm}(i,t) =
+\frac{1}{1+V}\cdot\frac{s^i(\tilde{N}^F_m(t) - \tilde{N}^F_n(t))}{s_{\max}\cdot\theta_n}
++ \frac{V}{1+V}\cdot\frac{\Delta\mathcal{L}^{i,trans}_n}{\mathcal{L}^{new}_{\max}}
++ \eta\cdot\frac{\hat{Z}_n\cdot\Delta DoD^{i,trans}_n}
+{Z_{\max}\cdot\Delta DoD_{\max}},
+\label{eq:cost_offload}
+\end{equation}
+
+其中$\eta > 0$为独立的DoD约束惩罚系数；
+权重$\frac{1}{1+V}$和$\frac{V}{1+V}$体现$[O(1/V), O(V)]$权衡。
+
+各归一化系数定义如下：
+
+\begin{equation}
+\mathcal{L}^{new}_{\max} = \frac{V}{1+V}\cdot
+\mathcal{L}'(DoD_{\max})\cdot\delta_{\max},
+\quad
+\delta_{\max} = \frac{\kappa s_{\max} h_{\max} c^2_n}{E^{cap}_n},
+\label{eq:norm1}
+\end{equation}
+
+\begin{equation}
+\Delta DoD_{\max} = \delta_{\max,n},
+\quad
+Z_{\max} = T_{snapshot}\cdot\delta_{\max,n}。
+\label{eq:norm2}
+\end{equation}
+
+为提升样本效率并稳定训练，在基础奖励上叠加 outcome-aware 辅助塑形项：
+
+\begin{equation}
+r^{shape}_n(t) = w_d D_n(t) - w_{to} O_n(t) - w_{re} J_n(t)
+- w_h \frac{H_n(t)}{H_{norm}} - w_q P^{Q}_n(t),
+\label{eq:reward_shape}
+\end{equation}
+
+其中$D_n, O_n, J_n$分别为本时隙完成、超时、拒绝的任务数，$H_n$为健康损耗增量，
+$P^Q_n$为队列压力，权重$(w_d, w_{to}, w_{re}, w_h, w_q) = (10, 5, 5, 2, 0.05)$。
+卫星$n$在时隙$t$的总奖励为$R_n(t) = \sum_i r^{base,a_i}_n(i,t) + r^{shape}_n(t)$。
+塑形项为辅助训练信号，其权重经验选取；理论保证针对基础 Lyapunov 边费用核心成立。
+
+\subsubsection{网络结构}
+
+\textbf{Actor网络：}
+输入状态向量$s_n(t)$，
+输出可行动作上的概率分布（经动作掩码屏蔽不可行动作）：
+\begin{equation}
+\pi_\theta(a^i_n | s_n(t))
+\propto \exp(f_\theta(s_n(t)))
+\cdot \mathbf{1}[a \in \mathcal{A}^{feasible}_i]。
+\label{eq:actor}
+\end{equation}
+
+\textbf{邻域Critic网络：}
+在Walker星座中，每颗卫星固定有4个邻居，
+邻居状态按前向、后向、左侧、右侧的固定顺序拼接：
+\begin{equation}
+s^{critic}_n(t) = [s_n(t),\
+\{s_m(t)\}_{m \in \mathcal{N}_n}]。
+\label{eq:critic_input}
+\end{equation}
+
+\textbf{参数更新：}
+Actor网络采用PPO截断目标：
+\begin{equation}
+L^{CLIP}(\theta) = \mathbb{E}\left[
+\min\left(r_t(\theta)\hat{A}_t,\
+\text{clip}(r_t(\theta), 1-\varepsilon, 1+\varepsilon)\hat{A}_t
+\right)
+\right] - \beta_{ent}\cdot H(\pi_\theta),
+\label{eq:ppo}
+\end{equation}
+其中$r_t(\theta) = \frac{\pi_\theta(a|s)}{\pi_{\theta_{old}}(a|s)}$
+为重要性采样比，$\hat{A}_t$为GAE优势估计，
+$\beta_{ent}=0.01$为熵正则系数，$\varepsilon=0.2$为截断参数。
+
+Critic网络采用均方误差损失：
+\begin{equation}
+L(\phi) = \mathbb{E}\left[
+(V_\phi(s^{critic}_n(t)) - \hat{R}_t)^2
+\right]。
+\label{eq:critic_loss}
+\end{equation}
+
+GAE按时隙顺序计算，
+同一时隙内所有任务的奖励聚合为时隙级奖励
+$R_n(t) = \sum_{i \in \pi_n(t)} r^i_n(t)$，
+时序差分误差：
+\begin{equation}
+\delta^{TD}_t = R_n(t) + \gamma V_\phi(s^{critic}_n(t+1))
+- V_\phi(s^{critic}_n(t)),
+\label{eq:td_error}
+\end{equation}
+GAE优势估计：
+\begin{equation}
+\hat{A}_t = \sum_{l=0}^{T-t-1}
+(\gamma\lambda_{GAE})^l\delta^{TD}_{t+l},
+\label{eq:gae}
+\end{equation}
+其中$\gamma=0.99$，$\lambda_{GAE}=0.9$。
+
+% ============================================================
+\subsection{理论保证}
+% ============================================================
+
+\subsubsection{基本假设}
+
+\textbf{假设1}（长期充放电可平衡条件）：
+见式\eqref{eq:assumption1}。
+
+\textbf{假设2}（有界近似误差）：
+存在常数$\epsilon_{gap} \geq 0$，
+使得MAPPO在每时隙子问题上的归一化代价与最优解之差满足：
+\begin{equation}
+\bar{c}^{MAPPO}_n(t) - \bar{c}^{opt}_n(t)
+\leq \epsilon_{gap},
+\quad \forall n \in \mathcal{N},\ t。
+\label{eq:assumption2}
+\end{equation}
+
+\textbf{假设3}（长期资源盈余）：
+存在常数$\epsilon > 0$和某个静态调度策略$\pi^s$，
+使转发队列满足：
+\begin{equation}
+\mathbb{E}_{\pi^s}\left[a_n(t)
++ \sum_{m\in\mathcal{N}_n}\beta_{mn}(t)
+- \alpha_n(t) - \beta_n(t)\right]
+\leq -\epsilon,
+\quad \forall n \in \mathcal{N}。
+\label{eq:assumption3}
+\end{equation}
+该条件在准入控制阈值$\theta_n$的约束下，
+由$\lambda_{\max} \leq E_n$保证成立。
+
+\subsubsection{性能定理}
+
+设$\bar{B} = \sum_n(B^F_n + B^B_n + B^Z_n)$，
+单时隙最大电池损耗上界：
+\begin{equation}
+\mathcal{L}^{\max} = \sum_n
+\mathcal{L}'(DoD_{\max}) \cdot \delta_{\max,n}。
+\label{eq:L_max}
+\end{equation}
+
+\textbf{定理1}（队列稳定性）：
+在假设1、2、3下，若初始状态满足
+$Q^F_n(0) = \theta_n$，$Q^B_n(0) = 0$，$Z_n(0) = 0$，
+则长期队列满足：
+\begin{equation}
+\limsup_{T\to\infty}\frac{1}{T}\sum_{t=0}^{T-1}
+\sum_n\mathbb{E}\left[Q^F_n(t) + Q^B_n(t)\right]
+\leq \sum_n\theta_n
++ \frac{\bar{B} + V(\mathcal{L}^{\max} - \mathcal{L}^*)
++ N\epsilon_{gap}}{\epsilon}。
+\label{eq:thm1}
+\end{equation}
+
+\textbf{定理2}（DoD约束满足）：
+虚拟队列$Z_n(t)$有界，等价于长期DoD约束C5满足：
+\begin{equation}
+\limsup_{T\to\infty}\frac{1}{T}\sum_{t=0}^{T-1}
+\mathbb{E}[\delta_n(t)] \leq 0,
+\quad \forall n \in \mathcal{N}。
+\label{eq:thm2}
+\end{equation}
+
+\textbf{定理3}（性能界）：
+算法的长期电池损耗满足：
+\begin{equation}
+\limsup_{T\to\infty}\frac{1}{T}\sum_{t=0}^{T-1}
+\mathbb{E}\left[\sum_n(\Delta\mathcal{L}^{comp}_n(t)
++ \Delta\mathcal{L}^{trans}_n(t))\right]
+\leq \mathcal{L}^* + \frac{\bar{B} + N\epsilon_{gap}}{V}。
+\label{eq:thm3}
+\end{equation}
+
+三个定理共同形成$[O(1/V), O(V)]$权衡：
+电池损耗次优性$\sim O(1/V)$，队列积压$\sim O(V)$，
+与\cite{zhang2024mhspo}中Lemma~2的结构一致。
+
+\textit{证明思路：}
+对漂移加惩罚不等式\eqref{eq:drift_penalty}两端
+从$t=0$到$T-1$求和，
+利用Lyapunov函数非负性$L(\Theta(T)) \geq 0$消去边界项，
+两端除以$T$取上极限，
+分别得到定理1、2、3。
+
+% ============================================================
+\subsection{算法描述}
+% ============================================================
+
+\begin{algorithm}[t]
+\caption{基于Lyapunov-MAPPO的星间调度（系统执行层）}
+\label{alg:execution}
+\begin{algorithmic}[1]
+\REQUIRE 系统参数$N, K_{\max}, \theta_n, V, \eta, \tau$；
+         网络参数$\theta, \phi$；
+         初始状态$Q^F_n(0)=\theta_n$，$Q^B_n(0)=0$，
+         $DoD_n(0)$，$Z_n(0)=0$
+\ENSURE 每时隙调度决策序列
+
+\FOR{每个训练回合}
+    \STATE 清空回合缓冲区$\mathcal{D}$
+    \FOR{每个时隙$t = 1, 2, \ldots, K$}
+
+        \STATE \textbf{// Step1：控制面信息交换}
+        \FOR{每颗卫星$n \in \mathcal{N}$}
+            \STATE 通过控制面获取邻居状态
+                   $\{Q^F_m(t), N^B_m(t), DoD_m(t)\}_{m \in \mathcal{N}_n}$
+        \ENDFOR
+
+        \STATE \textbf{// Step2：准入控制}
+        \FOR{每颗卫星$n \in \mathcal{N}$}
+            \FOR{每个新到达用户$i \in \mathcal{I}_n(t)$}
+                \IF{$N^F_n(t) \leq \theta_n$}
+                    \STATE 接受任务，初始化
+                           $\mathcal{R}^i = (0, 0)$
+                           （$k^i=0$，$\Delta^i_{trans}=0$）
+                \ELSE
+                    \STATE 拒绝任务
+                \ENDIF
+            \ENDFOR
+        \ENDFOR
+
+        \STATE \textbf{// Step3：调度决策}
+        \FOR{每颗卫星$n \in \mathcal{N}$}
+            \STATE \textbf{初始化时隙内临时状态：}
+            \STATE $\hat{N}^B_n \leftarrow N^B_n(t)
+                   - D_n(t) + \lfloor\bar{\alpha}_n\rfloor$
+            \STATE $\hat{Z}_n \leftarrow Z_n(t)$
+            \STATE 计算$V_\phi(s^{critic}_n(t))$，
+                   存入时隙级记录
+            \STATE 按$d^i_{remain}(t)$升序排列：
+                   $\pi_n(t) \leftarrow
+                   \text{sort}(Q^F_n(t),\ d^i_{remain}\text{升序})$
+            \STATE 平局打破：按$s^i$升序
+
+            \FOR{每个任务$i \in \pi_n(t)$}
+                \STATE 更新$d^i_{remain}(t)$（见式\eqref{eq:d_remain}）
+                \IF{$d^i_{remain}(t) \leq 0$}
+                    \STATE 任务超时，从队列移除；\textbf{continue}
+                \ENDIF
+
+                \STATE \textbf{构建动作掩码：}
+                \STATE $\mathcal{A}^{feasible}_i \leftarrow \{local\}$
+                \FOR{$m \in \mathcal{N}_n$}
+                    \IF{$k^i < K_{\max}$}
+                        \STATE 计算$\hat{d}^{i,C}_m$
+                               （用$N^B_m(t)+1$，见式\eqref{eq:est_comp_delay}）
+                        \IF{$\frac{s^i}{b_{nm}} + T_{nm}
+                            + \hat{d}^{i,C}_m
+                            \leq d^i_{remain}(t)$}
+                            \STATE $\mathcal{A}^{feasible}_i \leftarrow
+                                   \mathcal{A}^{feasible}_i \cup \{m\}$
+                        \ENDIF
+                    \ENDIF
+                \ENDFOR
+
+                \STATE \textbf{构建状态输入}$s_n(t)$（见式\eqref{eq:state}）
+                \STATE \textbf{Actor输出动作：}
+                       $a^i_n(t) \leftarrow \pi_\theta(\cdot|s_n(t))$
+                       经$\mathcal{A}^{feasible}_i$掩码
+
+                \IF{$a^i_n(t) = local$}
+                    \STATE 计算$\Delta DoD^{i,comp}_n(\hat{N}^B_n+1)$，
+                           $\Delta\mathcal{L}^{i,comp}_n$
+                    \STATE 计算奖励$r^i_n(t) =
+                           -\bar{c}^{local}_n(i,t)$
+                    \STATE 更新临时状态：
+                           $\hat{N}^B_n \leftarrow \hat{N}^B_n + 1$；
+                           $\hat{Z}_n \leftarrow \hat{Z}_n
+                           + \Delta DoD^{i,comp}_n$
+                \ELSE[$a^i_n(t) = m$，转发给邻居$m$]
+                    \STATE 计算$\Delta DoD^{i,trans}_n$，
+                           $\Delta\mathcal{L}^{i,trans}_n$
+                    \STATE 计算奖励$r^i_n(t) =
+                           -\bar{c}^{offload}_{nm}(i,t)$
+                    \STATE 更新运行时状态：
+                           $k^i \leftarrow k^i + 1$；
+                           $\Delta^i_{trans} \leftarrow
+                           \Delta^i_{trans} + s^i/b_{nm} + T_{nm}$
+                    \STATE 更新临时状态：
+                           $\hat{Z}_n \leftarrow \hat{Z}_n
+                           + \Delta DoD^{i,trans}_n$
+                \ENDIF
+
+                \STATE 存入任务级记录：
+                       $(s_n(t),\ a^i_n(t),\ r^i_n(t),\ t)$
+            \ENDFOR
+
+            \STATE 聚合时隙级奖励：
+                   $R_n(t) \leftarrow \sum_{i \in \pi_n(t)} r^i_n(t)$
+        \ENDFOR
+
+        \STATE \textbf{// Step4：任务处理与状态更新}
+        \FOR{每颗卫星$n \in \mathcal{N}$}
+            \FOR{每个任务$i \in Q^B_n(t)$}
+                \STATE 按式\eqref{eq:workload}计算$r^i_n(t)$
+                \IF{任务$i$处理完成}
+                    \STATE 从$Q^B_n$移除
+                \ENDIF
+            \ENDFOR
+            \STATE 更新$Q^F_n(t+1)$，$Q^B_n(t+1)$，
+                   $DoD_n(t+1)$，$Z_n(t+1)$
+            \STATE 更新滑动平均：
+                   $\bar{\alpha}_n \leftarrow
+                   (1-\mu)\bar{\alpha}_n
+                   + \mu\alpha^{num}_n(t)$
+        \ENDFOR
+
+        \STATE \textbf{// Step5：网络参数更新}
+        \IF{$t \bmod K = 0$}
+            \STATE 计算$V_\phi(s^{critic}_n(t+1))$作为bootstrap值
+            \STATE 调用算法~\ref{alg:training}更新网络参数
+            \STATE 清空回合缓冲区$\mathcal{D}$
+        \ENDIF
+
+    \ENDFOR
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+
+\begin{algorithm}[t]
+\caption{MAPPO网络参数更新（训练层）}
+\label{alg:training}
+\begin{algorithmic}[1]
+\REQUIRE 回合缓冲区$\mathcal{D}$；
+         Actor参数$\theta$，Critic参数$\phi$；
+         超参数$E=4$，minibatch$=64$，
+         $\gamma=0.99$，$\lambda_{GAE}=0.9$，
+         $\varepsilon=0.2$，$\beta_{ent}=0.01$
+\ENSURE 更新后的$\theta$，$\phi$
+
+\STATE \textbf{// Step1：计算GAE优势估计（从后向前）}
+\FOR{每颗卫星$n \in \mathcal{N}$}
+    \STATE $\hat{A}_{K+1} \leftarrow 0$
+    \FOR{$t = K, K-1, \ldots, 1$}
+        \STATE $\delta^{TD}_t \leftarrow R_n(t)
+               + \gamma V_\phi(s^{critic}_n(t+1))
+               - V_\phi(s^{critic}_n(t))$
+        \STATE $\hat{A}_t \leftarrow \delta^{TD}_t
+               + \gamma\lambda_{GAE}\hat{A}_{t+1}$
+        \STATE $\hat{R}_t \leftarrow V_\phi(s^{critic}_n(t))
+               + \hat{A}_t$
+        \STATE 将$\hat{A}_t$填入时隙$t$所有任务的任务级记录
+    \ENDFOR
+\ENDFOR
+
+\STATE \textbf{优势估计归一化：}
+\STATE $\hat{A}_{all} \leftarrow
+       (\hat{A}_{all} - \text{mean}(\hat{A}_{all}))
+       / (\text{std}(\hat{A}_{all}) + 10^{-8})$
+
+\STATE \textbf{// Step2：多轮梯度更新}
+\STATE $\theta_{old} \leftarrow \theta$
+\FOR{$\text{epoch} = 1, 2, \ldots, E$}
+    \STATE 随机打乱时隙级记录和任务级记录
+    \FOR{每个minibatch $\mathcal{B} \subseteq \mathcal{D}$}
+        \STATE 更新Critic：
+               $L(\phi) = \frac{1}{|\mathcal{B}^{critic}|}
+               \sum(V_\phi(s^{critic}_n(t)) - \hat{R}_t)^2$；
+               $\phi \leftarrow \phi - \alpha_{critic}\cdot\nabla_\phi L(\phi)$
+        \STATE 计算$r_t(\theta) =
+               \pi_\theta(a^i_n|s_n(t))
+               / \pi_{\theta_{old}}(a^i_n|s_n(t))$
+        \STATE 更新Actor：
+               $L(\theta) = -\frac{1}{|\mathcal{B}^{actor}|}
+               \sum\min(r_t(\theta)\hat{A}_t,\
+               \text{clip}(r_t(\theta),
+               1-\varepsilon, 1+\varepsilon)\hat{A}_t)
+               - \beta_{ent}\cdot H(\pi_\theta)$；
+               $\theta \leftarrow \theta - \alpha_{actor}\cdot\nabla_\theta L(\theta)$
+    \ENDFOR
+\ENDFOR
+
+\STATE $\theta_{old} \leftarrow \theta$
+\end{algorithmic}
+\end{algorithm}
+
+% ============================================================
+\section{仿真结果}
+\label{sec:simulation}
+% ============================================================
+
+\subsection{仿真设置}
+\label{subsec:sim_setup}
+
+\subsubsection{场景与参数}
+我们在 Walker 星座上仿真一个卫星边缘计算网络，星座轨道高度 550~km，
+共 $N=192$ 颗卫星（16 个轨道平面 $\times$ 12 颗）。仿真以时隙长度 $\tau=1$~s
+逐槽推进，运行时长为一个轨道周期（5400 时隙）。为刻画空间负载不均衡与由此
+产生的电池压力，$1/5$ 的卫星为高负载星，任务到达率 $\lambda_{\text{high}}=4.0$
+（任务/时隙），其余为低负载星 $\lambda_{\text{low}}=0.1$，到达均服从泊松过程。
+电池与健康损耗模型（半指数寿命损耗、DoD 动态与 DoD 虚拟队列 $z_n$）见
+第~\ref{sec:system_model}~节；主要参数汇总于表~\ref{tab:sim_params}。
+本文所提算法在下文记为 \textbf{LyaMAPPO}。
+
+\begin{table}[t]
+\centering
+\caption{主要仿真参数}
+\label{tab:sim_params}
+\begin{tabular}{ll}
+\hline
+参数 & 取值 \\
+\hline
+卫星数 $N$ & 192（16 $\times$ 12 Walker）\\
+轨道高度 / 周期 & 550~km / 5400 时隙 \\
+时隙长度 $\tau$ & 1~s \\
+高/低负载率 $\lambda$ & 4.0 / 0.1（1/5 为高负载）\\
+任务大小 $s^i$ & 10--50~Mb \\
+计算密度 $h^i$ & 10--30~cycles/bit~\cite{li_tsc_2024} \\
+截止时间 & 1--12~s \\
+最大转发跳数 & 3 \\
+CPU 频率上限 $c_n$ & 2~GHz~\cite{zhang_tmc_2023} \\
+能耗系数 $\kappa$ & $1\times10^{-26}$~\cite{zhang_tmc_2023} \\
+单星并发上限 & 6 \\
+ISL 速率 & 100--300~Mb/s \\
+发射功率 & 0.1~W \\
+每星邻居数 & 4 \\
+电池容量 $E^{cap}_n$ & 36~kJ \\
+太阳能功率 / 日照比 & $\le 30$~W / 0.65 \\
+DoD 范围 & $[0.1,\,0.8]$ \\
+损耗曲线系数 $a$ & 0.8 \\
+Lyapunov $V$ / $\eta$ & 50 / 0.5 \\
+奖励权重 $(w_d,w_{to},w_{re},w_h,w_q)$ & $(10,5,5,2,0.05)$ \\
+PPO $\gamma$/$\lambda_{\text{GAE}}$/$\epsilon$/熵 & 0.99 / 0.95 / 0.2 / 0.02 \\
+学习率（actor/critic） & $10^{-4}$ / $10^{-3}$ \\
+minibatch / epoch / rollout & 64 / 2 / 64 \\
+训练 / 评估时长 & 32K / 5400 时隙 \\
+评估种子数 & 10 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{对比算法与消融变体}
+我们将 LyaMAPPO 与四个基准对比，四者均运行在同一物理基底（相同的
+DVFS 频率选择、电池与 ISL 模型）之上，差异仅来自卸载/调度策略：
+\begin{itemize}
+    \item \textbf{TD3-Sched}~\cite{huang2024td3}：学习型基准，取自双时间尺度调度
+    框架中的 TD3 调度器，保留 clipped double-Q、延迟策略更新与目标策略平滑；
+    其代价函数不含电池健康与 DoD 约束。
+    \item \textbf{MHSPO}~\cite{zhang2024mhspo}：将多跳星间对等卸载与 Lyapunov
+    队列控制相结合的最强经典基准，以延迟在线梯度下降在线预测邻居负载并规避拥塞。
+    \item \textbf{GDCO}~\cite{chen2025gdco}：基于精确势博弈的分布式卸载，非学习型，
+    各卫星依博弈均衡决策，仅优化能耗、不含电池健康项。
+    \item \textbf{LSO}：平凡下界，所有任务在接入卫星本地处理、不启用星间卸载。
+\end{itemize}
+此外设置两个消融变体：\textbf{MAPPO-NoDoD}（移除电池感知，即将 $z_n$ 与
+健康损耗奖励项一并置零，为合并消融）与 \textbf{LyapunovGreedy}（移除强化学习，
+以无学习的贪心逐任务最小化当前时隙代价）。
+
+\subsubsection{评估指标}
+我们报告五个指标：(1) \emph{用户满意度}（主指标）$=$ 满足截止时间的任务数
+与（完成 $+$ 超时）任务数之比；(2) \emph{电池累计健康损失}（HL），
+为评估期内系统累计的健康损耗；(3) \emph{系统总能耗}；(4) \emph{端到端时延}，
+为每任务 E2E 时延均值；(5) \emph{系统积压}，为系统内待处理任务总数。
+满意度与时延为强度量；累计 HL、总能耗与积压为系统级外延量，在 $N=192$ 规模下报告。
+% TODO(N-口径)：N=192 系统级量的获取口径（N=25 投影 vs 原生 192）待定。
+
+\subsubsection{训练配置}
+LyaMAPPO 采用参数共享 MAPPO，奖励为 Lyapunov 归一化边费用叠加 outcome-aware
+辅助塑形（见第~\ref{sec:algorithm}~节）。DVFS 权重 $V_f$ 经校准使 $f^{cmp}$ 在
+满队列工况下恰达 $c_n$。训练 32K 时隙；评估在 5400 时隙上进行，
+在 10 个独立随机种子上重复，所有结果报告均值 $\pm$ 标准差；对含内部估计量的
+启发式（如 MHSPO）评估前设预热期。超参见表~\ref{tab:sim_params}。
+
+\subsection{性能对比与分析}
+\label{subsec:comparison}
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/queue_backlog.png}
+\caption{系统积压量随时间的变化对比}\label{fig:queue}\end{figure}
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/satisfaction_pdf.png}
+\caption{逐时隙用户满意度分布对比}\label{fig:sat}\end{figure}
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/energy_pdf.png}
+\caption{逐时隙系统能耗分布对比}\label{fig:energy}\end{figure}
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/delay_pdf.png}
+\caption{逐时隙系统时延分布对比}\label{fig:delay}\end{figure}
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/cumulative_hl.png}
+\caption{系统累计健康损失随时间的变化对比}\label{fig:hl}\end{figure}
+
+图~\ref{fig:queue}~至图~\ref{fig:hl}~展示了五种方案的长期系统性能。我们主要关注
+五个指标：图~\ref{fig:queue}~的系统积压随时间变化、图~\ref{fig:sat}~的用户满意度、
+图~\ref{fig:energy}~的系统能耗开销、图~\ref{fig:delay}~的系统时延，以及
+图~\ref{fig:hl}~的累计健康损失随时间变化。需注意，图~\ref{fig:sat}、\ref{fig:energy}、
+\ref{fig:delay}~为系统指标在不同时隙上的概率密度分布。
+
+图~\ref{fig:queue}~展示系统积压随时间的变化。所有策略的队列在整个轨道周期内均平稳、
+不发散：TD3-Sched 积压最低，LyaMAPPO 与 MHSPO 基本持平，二者凭借 Lyapunov 队列漂移
+最小化机制将积压控制在稳定水平，明显低于卸载能力薄弱的 GDCO 与 LSO。
+
+图~\ref{fig:sat}~与图~\ref{fig:delay}~分别对比 LyaMAPPO 与四个基线在卫星边缘网络
+场景下的逐时隙用户满意度与端到端时延。LyaMAPPO 与 TD3-Sched 在时延上同处第一梯队，
+明显优于 MHSPO、GDCO 与 LSO；这得益于任务级顺序决策等机制，使 LyaMAPPO 的热点卫星
+队列峰值与 TD3 并列最低。在满意度上，TD3-Sched 略占优势，是因为其代价函数不含电池
+健康与 DoD 约束，能够采取更激进的高时钟卸载策略；但正如下文所示，这一优势以牺牲系统
+能耗与电池寿命为代价。相比之下，缺乏有效卸载与队列控制的 LSO 满意度最低，服务能力
+几乎丧失。
+
+图~\ref{fig:energy}~与图~\ref{fig:hl}~进一步对比系统能耗与累计电池健康损失（HL）。
+LyaMAPPO 在各对比策略中均展现优势：其系统总能耗约为 TD3 的 57\%、MHSPO 的 54\%，
+累计 HL 约为 MHSPO 的三分之一。这得益于 Lyapunov--DVFS 耦合下的低时钟运行，以及放电
+深度虚拟队列 $z_n$ 所实现的耗能``择时''。相反，缺乏电池感知的算法电池损耗严重：
+MHSPO 与 TD3-Sched 的累计 HL 分别增至 LyaMAPPO 的 2.9 倍与 2.5 倍，系统能耗亦分别
+高出约 86\% 与 76\%。对累计 HL 的三因子分解表明，这种恶化主要并非源于更深的放电
+（各策略损伤率水平相近），而是源于它们将耗能决策集中于高放电深度时段。值得注意的是，
+LSO 不具备卸载能力，其过载卫星须在本地处理全部到达任务，致使热点卫星长期处于深度放电
+状态，且能量消耗多集中于高放电深度时段；尽管其系统总能耗为各策略中最低，但该结果源于
+大量任务因过载而超时，并非高效运行所致，其累计健康损失仍与 LyaMAPPO 相当。这表明，
+系统总能耗与累计健康损失之间并非单调对应，决定健康损失的关键在于能量消耗所处的放电
+深度及其空间分布，而非能耗总量。
+
+综上，LyaMAPPO 实现了优异的多目标权衡：以约 1--5 个百分点的满意度让步，换取显著更低
+的系统能耗与电池健康损耗，同时维持第一梯队的时延与稳定的队列。其根源在于
+Lyapunov--MAPPO 深度耦合与 $z_n$ 电池感知择时机制——将长期电池约束转化为可观测的
+虚拟队列，并通过 RL 长视野学习，使能量消耗集中于放电深度较低的时段，从而以更低的总
+能量完成计算。
+
+\subsection{消融实验与分析}
+\label{subsec:ablation}
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/ablation_satisfaction.png}
+\caption{逐时隙用户满意度分布消融}\label{fig:abl_sat}\end{figure}
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/abl_delay_pdf.png}
+\caption{逐时隙系统时延分布消融}\label{fig:abl_delay}\end{figure}
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/ablation_energy.png}
+\caption{逐时隙系统能耗分布消融}\label{fig:abl_energy}\end{figure}
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{figures/ablation_cumulative_hl.png}
+\caption{系统累计健康损失随时间的变化消融}\label{fig:abl_hl}\end{figure}
+
+\begin{table}[t]\centering
+\caption{消融实验结果（$N=192$，均值 $\pm$ 标准差，10 种子）}
+\label{tab:ablation}
+\begin{tabular}{lcccc}
+\hline
+变体 & 用户满意度 & 时延(s) & 累计 HL & 总能耗(kJ) \\
+\hline
+LyaMAPPO（完整） & $0.787\pm0.001$ & $3.33\pm0.01$ & $183\pm4$ & $6957\pm61$ \\
+MAPPO-NoDoD & $0.824\pm0.001$ & $3.09\pm0.01$ & $554\pm6$ & $13238\pm92$ \\
+LyapunovGreedy & $0.425\pm0.002$ & $6.25\pm0.02$ & $70\pm2$ & $3356\pm46$ \\
+\hline
+\end{tabular}
+\end{table}
+
+为厘清 LyaMAPPO 中关键组件的作用，本节分别剥离两个组件：电池感知（放电深度虚拟队列
+$z_n$ 与健康损失奖励项 $w_h$）与强化学习。移除前者得到 MAPPO-NoDoD（$z_n$ 与 $w_h$
+一并置零，为合并消融，用于界定电池感知整体的作用）；移除后者得到 LyapunovGreedy
+（保留同一 Lyapunov 代价计算，但以无学习的贪心策略逐任务最小化当前时隙代价）。
+图~\ref{fig:abl_sat}~至图~\ref{fig:abl_hl}~及表~\ref{tab:ablation}~给出两变体与完整
+模型在用户满意度、系统时延、系统能耗与累计健康损失上的对比。
+
+图~\ref{fig:abl_sat}~与图~\ref{fig:abl_delay}~分别对比用户满意度与端到端时延。移除
+电池约束后，MAPPO-NoDoD 的满意度不降反升至 0.824（较完整模型高约 4 个百分点），时延
+亦略降至 3.09~s；这是因为放开电池约束后，策略可采取更激进的高时钟卸载。该结果从反面
+量化了完整模型为保护电池而主动让出的吞吐（约 4 个百分点）。与之相反，LyapunovGreedy
+的满意度骤降至 0.425（约为完整模型的一半），时延显著恶化至 6.25~s。其原因在于，缺乏
+强化学习的长视野信用分配后，贪心策略仅能最小化当前时隙代价，无法进行跨时隙的任务取舍，
+导致大量任务超时、队列积压加剧。这表明，Lyapunov 机制本身虽能维持队列稳定，但须与
+强化学习的长视野决策相结合，方能在均衡负载的同时保持高吞吐。
+
+图~\ref{fig:abl_energy}~与图~\ref{fig:abl_hl}~分别对比系统能耗与累计健康损失。移除
+电池感知后，MAPPO-NoDoD 的累计 HL 急剧上升至完整模型的 3.0 倍，系统能耗上升至 1.9 倍；
+对累计 HL 的三因子分解表明，这一恶化同时来自更差的耗能择时与更高的总能耗，而非更深的
+放电，印证 $z_n$ 与 $w_h$ 共同构成抑制健康损失的关键机制。LyapunovGreedy 的累计 HL
+虽更低（约为完整模型的 0.38 倍），但该结果并非源于有效的电池管理：其贪心策略实际处理的
+任务量极少（满意度仅 0.425），健康损失的降低是服务能力严重退化的伴随现象，而非可用的
+优化结果。
+
+综上，两个消融变体沿相反方向失效：移除电池感知（MAPPO-NoDoD）导致电池健康损失激增，
+移除强化学习（LyapunovGreedy）导致吞吐性能崩溃。唯有同时具备电池感知择时（$z_n$ 与
+$w_h$）与强化学习长视野决策的完整 LyaMAPPO，方能在电池健康与服务质量之间取得可用的
+平衡。这一结果验证了本文两项核心设计的不可或缺性。
+
+% ============================================================
+\section{结论}
+\label{sec:conclusion}
+% ============================================================
+
+本文研究了 LEO 卫星边缘计算网络中电池感知的多跳任务卸载问题。针对深度放电加速电池
+容量衰减、威胁卫星在轨寿命这一核心挑战，本文采用半指数函数量化放电深度与电池寿命
+损耗的非线性关系，通过定义 DoD 虚拟队列 $z_n$ 并结合一阶泰勒线性化，在 Lyapunov
+漂移加惩罚框架内将非线性电池约束转化为可优化的线性代理目标；进而设计 Lyapunov
+理论塑形奖励驱动的参数共享 MAPPO 分布式在线调度算法，使神经网络策略在优化过程中
+隐式逼近理论最优解，并实现训练复杂度与卫星规模解耦。
+
+仿真结果表明，与 TD3-Sched、MHSPO、GDCO 及本地卸载等基准相比，所提算法在保持第一
+梯队端到端时延与稳定队列积压的同时，将系统累计电池健康损耗降至最强基准的约三分之一、
+系统能耗降至约一半，仅以约 1--5 个百分点的用户满意度为代价。机理分析进一步揭示，这一
+电池优势主要源于 $z_n$ 驱动的耗能``择时''——将能量消耗调度至放电深度较低的时段，
+从而在损耗函数的强凸性下换取指数级的健康收益；消融实验验证了电池感知与强化学习两个
+组件缺一不可。
+
+本文仍存在若干局限，有待后续研究：其一，主结果基于单一训练所得策略，训练过程本身的
+方差有待通过多次独立训练进一步刻画；其二，DVFS 与电池模型均为模型级抽象，尚未纳入
+硬件在环验证；其三，本文聚焦单服务卸载场景，未涉及资源切片等多服务扩展。未来工作将
+围绕多服务资源联合优化、硬件在环验证与更大规模原生评估展开。
+
+% ============================================================
+\begin{thebibliography}{99}
+
+\bibitem{1}
+X. Zhang, J. Liu, R. Zhang, Y. Huang, J. Tong, N. Xin,
+L. Liu, and Z. Xiong,
+``Energy-efficient computation peer offloading in satellite
+edge computing networks,''
+\textit{IEEE Trans. Mobile Comput.},
+vol. 23, no. 4, pp. 3077--3091, Apr. 2024.
+
+\bibitem{2}
+2025A Computation Offloading and Resource Allocation in LEO
+Satellite-Terrestrial Integrated Networks With System State Delay.
+
+\bibitem{3}
+2025A Latency-Energy Efficient Task Offloading in the
+Satellite Network-Assisted Edge Computing via Deep Reinforcement Learning.
+
+\bibitem{4}
+2025A On-Demand and Scalable Topology Control Service
+for LEO Satellite Network Evolving.
+
+\bibitem{5}
+2025A Stochastic Model for Evaluating the Aging Impact
+on Satellite Systems' Availability.
+
+\bibitem{6}
+2025A A Game-Theoretical Approach for Distributed
+Computation Offloading in LEO Satellite-Terrestrial
+Edge Computing Systems.
+
+\bibitem{zhang2024mhspo}
+X. Zhang, J. Liu, R. Zhang, Y. Huang, J. Tong, N. Xin,
+L. Liu, and Z. Xiong,
+``Energy-efficient computation peer offloading in satellite
+edge computing networks,''
+\textit{IEEE Trans. Mobile Comput.},
+vol. 23, no. 4, pp. 3077--3091, Apr. 2024.
+
+\bibitem{chen2025tasri}
+Y. Chen \textit{et al.},
+``Battery-aware energy optimization for satellite edge computing,''
+\textit{IEEE Trans. Serv. Comput.},
+vol. 18, no. 4, 2025.
+
+\bibitem{mahdavi2012}
+M. Mahdavi, F. Mahdavi, and R. Jin,
+``Trading regret for efficiency: Online convex optimization
+with long term constraints,''
+\textit{J. Mach. Learn. Res.},
+vol. 13, pp. 2503--2528, 2012.
+
+\bibitem{hazan2016}
+E. Hazan,
+``Introduction to online convex optimization,''
+\textit{Found. Trends Optim.},
+vol. 2, no. 3-4, pp. 157--325, 2016.
+
+\end{thebibliography}
+
+\end{document}
