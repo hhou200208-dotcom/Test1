@@ -1321,6 +1321,26 @@ $Q^F_n(0) = \theta_n$，$Q^B_n(0) = 0$，$Z_n(0) = 0$，
 逐槽推进，运行时长为一个轨道周期（5400 时隙）。为刻画空间负载不均衡与由此
 产生的电池压力，$1/5$ 的卫星为高负载星，任务到达率 $\lambda_{\text{high}}=4.0$
 （任务/时隙），其余为低负载星 $\lambda_{\text{low}}=0.1$，到达均服从泊松过程。
+
+\textbf{太阳能收集模型。}卫星充电遵循 LEO 轨道的光照--地影周期~\cite{chen2025tasri}。
+记 $\theta_n(t)=\omega t+\varphi_n$ 为卫星 $n$ 相对日下点的轨道相位，
+$\omega=2\pi/T_{orbit}$，各卫星初相 $\varphi_n=2\pi n/N$ 沿星座均匀错开；
+受晒占比取 $\rho_{sun}=0.65$。太阳能功率按面板入射角近似为升余弦：
+\begin{equation}
+    P^{solar}_n(t)=P^{solar}_{\max}\,
+    \max\!\left(\frac{\cos\theta_n(t)-\cos(\rho_{sun}\pi)}
+    {1-\cos(\rho_{sun}\pi)},\ 0\right),
+    \label{eq:solar_model}
+\end{equation}
+峰值 $P^{solar}_{\max}=30$~W 出现在日下点（$\theta_n=0$），
+在占轨道周期 $\rho_{sun}$ 的受晒弧上为正、地影区为零，
+光照状态 $\xi_n(t)=\mathbf{1}[P^{solar}_n(t)>0]$。
+各卫星进出地影的时刻因 $\varphi_n$ 不同而各异，
+在星座级形成充电机会的空间异质性。
+% TODO(光照口径): core/constellation.py 的 _precompute_solar 需改为式(\ref{eq:solar_model})
+% （当前实现为 P_max·max(cos,0)，受晒占比≈0.50 而非 0.65）；改后须重训并重新生成
+% multiseed_lh4.json / diagnostics_lh4.json，届时同步更新正文数字。
+
 电池与健康损耗模型（半指数寿命损耗、DoD 动态与 DoD 虚拟队列 $Z_n$）见
 第~\ref{sec:system_model}~节；主要参数汇总于表~\ref{tab:sim_params}。
 本文所提算法在下文记为 \textbf{LyaMAPPO}。
@@ -1348,7 +1368,7 @@ ISL 速率 & 100--300~Mb/s \\
 发射功率 & 0.1~W \\
 每星邻居数 & 4 \\
 电池容量 $E^{cap}_n$ & 36~kJ \\
-太阳能功率 / 日照比 & $\le 30$~W / 0.65 \\
+太阳能峰值功率 $P^{solar}_{\max}$ / 受晒占比 $\rho_{sun}$ & $30$~W / $0.65$ \\
 DoD 范围 & $[0.1,\,0.8]$ \\
 损耗曲线系数 $a$ & 0.8 \\
 Lyapunov $V$ / $\eta$ & 50 / 0.5 \\
