@@ -128,14 +128,26 @@ METRICS = [
 def run_sweep(args) -> Dict:
     results: Dict[int, Dict] = {}
 
-    # ── 若给定已训练好的 LyaMAPPO 模型：加载一次，在各 K 下仅评估 ──
+    # ── 共享一份 LyaMAPPO（加载或训练一次），在各 K 下仅评估 ──
     shared_policy = None
-    if args.policy.lower() == 'mappo' and args.load:
+    if args.policy.lower() == 'mappo' and (args.load or args.shared_model):
         from training import MAPPOPolicy
         ref_cfg = Config()
+        ref_cfg.K_MAX = args.train_kmax
         shared_policy = MAPPOPolicy(ref_cfg, name='MAPPO')
-        shared_policy.load(args.load)
-        print(f"[Kmax] 已加载训练好的 LyaMAPPO 模型：{args.load}（各 K 下直接评估，不再训练）")
+        if args.load:
+            shared_policy.load(args.load)
+            print(f"[Kmax] 已加载最优 LyaMAPPO 模型：{args.load}（各 K 下直接评估）")
+        else:
+            t_train = args.t_train if args.t_train is not None else ref_cfg.T_TRAIN
+            print(f"[Kmax] 训练一份 LyaMAPPO（K={args.train_kmax}，{t_train} 时隙），"
+                  f"再在各 K 下评估 …")
+            ref_env = SatelliteMECEnv(ref_cfg)
+            shared_policy.set_train_mode(); ref_env.reset(phase='train')
+            for step in range(t_train):
+                shared_policy.run_step(ref_env)
+                if (step + 1) % 5000 == 0:
+                    print(f"  训练进度 {step + 1}/{t_train}")
 
     for k in args.kmax:
         cfg = Config()
@@ -306,7 +318,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--n_runs', type=int, default=None, help='评估种子数（默认取 Config）')
     p.add_argument('--t_eval', type=int, default=None, help='每次评估时隙数（默认取 Config）')
     p.add_argument('--t_train', type=int, default=None, help='mappo 训练时隙数')
-    p.add_argument('--train', action='store_true', help='mappo 模式下逐 K 训练')
+    p.add_argument('--train', action='store_true', help='mappo 模式下逐 K 各训一个（慢）')
+    p.add_argument('--shared_model', action='store_true',
+                   help='mappo 模式下只训练一份，在各 K 下评估（快，推荐）')
+    p.add_argument('--train_kmax', type=int, default=3,
+                   help='shared_model 训练时使用的 K_MAX（默认 3）')
     p.add_argument('--load', type=str, default=None,
                    help='已训练好的 LyaMAPPO 模型目录（含 actor.pth/critic.pth）；'
                         '给定后加载该最优模型，在各 K 下直接评估、不再训练')
