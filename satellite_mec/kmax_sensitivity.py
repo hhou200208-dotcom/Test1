@@ -169,6 +169,53 @@ def run_sweep(args) -> Dict:
 # ──────────────────────────────────────────────────────────────
 # 绘图
 # ──────────────────────────────────────────────────────────────
+def plot_combined(results: Dict, out_dir: str, highlight_k: int = 3) -> None:
+    """满意度（收益，左轴）与累计电池损耗（成本，右轴）合成一张双 Y 轴权衡图。"""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    ks = sorted(results.keys())
+    os.makedirs(out_dir, exist_ok=True)
+    sat_m = [results[k]['satisfaction_rate']['mean'] for k in ks]
+    sat_s = [results[k]['satisfaction_rate']['std']  for k in ks]
+    hl_m  = [results[k]['cumulative_health_loss']['mean'] for k in ks]
+    hl_s  = [results[k]['cumulative_health_loss']['std']  for k in ks]
+
+    c_sat, c_hl = '#1f77b4', '#d62728'
+    fig, ax1 = plt.subplots(figsize=(6.2, 4.3))
+
+    ax1.errorbar(ks, sat_m, yerr=sat_s, marker='o', color=c_sat, lw=2,
+                 capsize=4, label='User Satisfaction Rate')
+    ax1.set_xlabel(r'Max Forwarding Hops $K_{\max}$')
+    ax1.set_ylabel('User Satisfaction Rate (higher better)', color=c_sat)
+    ax1.tick_params(axis='y', labelcolor=c_sat)
+    ax1.set_xticks(ks)
+    ax1.grid(True, alpha=0.3)
+
+    ax2 = ax1.twinx()
+    ax2.errorbar(ks, hl_m, yerr=hl_s, marker='s', color=c_hl, lw=2, ls='--',
+                 capsize=4, label='Cumulative Battery Loss')
+    ax2.set_ylabel('Cumulative Battery Loss (lower better)', color=c_hl)
+    ax2.tick_params(axis='y', labelcolor=c_hl)
+
+    if highlight_k in ks:
+        ax1.axvline(highlight_k, color='gray', ls=':', alpha=0.8)
+        ax1.annotate(f'$K_{{\\max}}={highlight_k}$\n(chosen trade-off)',
+                     xy=(highlight_k, sat_m[ks.index(highlight_k)]),
+                     xytext=(8, -28), textcoords='offset points',
+                     color='dimgray', fontsize=9)
+
+    # 合并两轴图例
+    h1, l1 = ax1.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax1.legend(h1 + h2, l1 + l2, loc='upper center', fontsize=9, framealpha=0.9)
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, 'kmax_satisfaction_vs_loss.png'), dpi=150)
+    plt.close(fig)
+
+
 def plot_results(results: Dict, out_dir: str, highlight_k: int = 3) -> None:
     import matplotlib
     matplotlib.use('Agg')
@@ -252,6 +299,8 @@ def parse_args() -> argparse.Namespace:
                    help='评估前段丢弃比例（去暂态）')
     p.add_argument('--debug', action='store_true', help='快速冒烟：单种子、短时长')
     p.add_argument('--no_plots', action='store_true')
+    p.add_argument('--only_combined', action='store_true',
+                   help='只出满意度 vs 电池损耗合成图，不出其余单图')
     return p.parse_args()
 
 
@@ -273,8 +322,11 @@ def main() -> None:
     results = run_sweep(args)
     save_results(results, base_dir)
     if not args.no_plots:
-        plot_results(results, os.path.join(base_dir, 'figures'),
-                     highlight_k=3 if 3 in args.kmax else args.kmax[len(args.kmax) // 2])
+        fig_dir = os.path.join(base_dir, 'figures')
+        hk = 3 if 3 in args.kmax else args.kmax[len(args.kmax) // 2]
+        plot_combined(results, fig_dir, highlight_k=hk)   # 满意度 vs 电池损耗 合成图
+        if not args.only_combined:
+            plot_results(results, fig_dir, highlight_k=hk)
 
     # 控制台小结
     ks = sorted(results.keys())
