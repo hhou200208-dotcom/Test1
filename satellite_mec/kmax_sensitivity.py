@@ -127,6 +127,16 @@ METRICS = [
 
 def run_sweep(args) -> Dict:
     results: Dict[int, Dict] = {}
+
+    # ── 若给定已训练好的 LyaMAPPO 模型：加载一次，在各 K 下仅评估 ──
+    shared_policy = None
+    if args.policy.lower() == 'mappo' and args.load:
+        from training import MAPPOPolicy
+        ref_cfg = Config()
+        shared_policy = MAPPOPolicy(ref_cfg, name='MAPPO')
+        shared_policy.load(args.load)
+        print(f"[Kmax] 已加载训练好的 LyaMAPPO 模型：{args.load}（各 K 下直接评估，不再训练）")
+
     for k in args.kmax:
         cfg = Config()
         cfg.K_MAX = int(k)
@@ -136,14 +146,16 @@ def run_sweep(args) -> Dict:
         t_train = args.t_train if args.t_train is not None else cfg.T_TRAIN
 
         env = SatelliteMECEnv(cfg)
-        policy = build_policy(args.policy, cfg, env)
 
-        # 可选：MAPPO 需先训练（逐 K 各训一个策略）
-        if args.policy.lower() == 'mappo' and args.train:
-            print(f"[K={k}] 训练 MAPPO {t_train} 时隙 …")
-            policy.set_train_mode(); env.reset(phase='train')
-            for _ in range(t_train):
-                policy.run_step(env)
+        if shared_policy is not None:
+            policy = shared_policy                     # 复用同一份最优权重，仅评估
+        else:
+            policy = build_policy(args.policy, cfg, env)
+            if args.policy.lower() == 'mappo' and args.train:   # 逐 K 各训一个（很慢）
+                print(f"[K={k}] 训练 MAPPO {t_train} 时隙 …")
+                policy.set_train_mode(); env.reset(phase='train')
+                for _ in range(t_train):
+                    policy.run_step(env)
 
         per_run: List[Dict[str, float]] = []
         n_runs = cfg.N_EVAL_RUNS if args.n_runs is None else args.n_runs
@@ -295,6 +307,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--t_eval', type=int, default=None, help='每次评估时隙数（默认取 Config）')
     p.add_argument('--t_train', type=int, default=None, help='mappo 训练时隙数')
     p.add_argument('--train', action='store_true', help='mappo 模式下逐 K 训练')
+    p.add_argument('--load', type=str, default=None,
+                   help='已训练好的 LyaMAPPO 模型目录（含 actor.pth/critic.pth）；'
+                        '给定后加载该最优模型，在各 K 下直接评估、不再训练')
     p.add_argument('--warmup_frac', type=float, default=0.1,
                    help='评估前段丢弃比例（去暂态）')
     p.add_argument('--debug', action='store_true', help='快速冒烟：单种子、短时长')
