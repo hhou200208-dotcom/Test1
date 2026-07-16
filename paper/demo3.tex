@@ -57,15 +57,13 @@
 队列稳定性与放电深度约束的长期随机优化问题，
 并以最小化长期电池寿命损耗为主要目标。并设计
 Lyapunov理论塑形奖励驱动的基于参数共享MAPPO的分布式在线调度算法求解，
-使策略学习过程与 Lyapunov 漂移加惩罚目标保持一致，从而获得面向长期电池寿命优化的在线调度策略。
-针对 LEO 星座的高速时变拓扑，本文进一步将传统静态多跳升级为随任务时间裕度自适应的无环多跳，
-并采用置换等变的图注意力邻域策略以增强动态拓扑下的泛化能力。仿真结果表明，
+使策略学习过程与 Lyapunov 漂移加惩罚目标保持一致，从而获得面向长期电池寿命优化的在线调度策略。仿真结果表明，
 与当前主流基准算法相比，我们所提算法在保持第一梯队端到端时延与稳定队列的同时，
 大幅降低了系统累计的电池寿命损耗，
 % 将系统累计电池寿命损耗降低约 29\%到65\%,
 在电池寿命与服务质量之间取得了良好的多目标权衡。
 
-\noindent\textbf{关键词：}卫星网络，边缘计算，任务卸载，电池寿命，自适应多跳，图注意力
+\noindent\textbf{关键词：}卫星网络，边缘计算，任务卸载，电池寿命
 
 % ============================================================
 \section{引言}
@@ -133,12 +131,6 @@ LEO卫星电池的寿命损耗由DoD通过非线性电化学机制决定：
     强化学习奖励，使神经网络策略在优化过程中隐式逼近理论最优解；
     同时采用参数共享机制减少模型参数量，并提升策略在同构卫星节点间的泛化能力。
 
-    \item 将传统静态多跳升级为面向动态星座的自适应多跳机制：
-    提出随任务剩余时间预算自适应调节的中继深度$K_i(t)$与无环多跳约束，
-    在不改变 Lyapunov 漂移界常数的前提下抑制无谓中继与路径成环；
-    并将 Actor 设计为置换等变的图注意力邻域策略，取代固定顺序邻居拼接，
-    增强对动态拓扑与可变邻居数的泛化能力。
-
     \item 我们进行仿真以评估所提方案的性能，并与主流基准方案进行对比。
     仿真结果表明，所提方案在维持第一梯队时延与服务质量的同时，
     显著降低了系统电池寿命损耗与能耗，实现了电池寿命与服务质量的良好权衡。
@@ -190,22 +182,12 @@ LEO卫星电池的寿命损耗由DoD通过非线性电化学机制决定：
 利用数字孪生提供的网络状态信息设计协作式多智能体深度强化学习卸载框架。
 \cite{lai2025hmadrl}面向低轨卫星网络中的联合计算卸载与资源分配问题，
 设计层级多智能体强化学习算法，以降低任务处理时延和超时率并改善负载均衡。
+在多跳路由/卸载的决策机制上，源于队列稳定性理论的背压（backpressure）方法\cite{tassiulas1992}
+因仅依赖相邻节点的差分积压、无需全局拓扑而被广泛用于动态网络；
+近年工作\cite{zhang2024mhspo,msndo2025}进一步将其与在线学习/深度强化学习结合，
+把长期漂移加惩罚的估计交由数据驱动模型，以提升时变星座下的多跳卸载性能。
 上述方法提升了星座计算资源利用率，但主要优化时延、能耗和负载均衡，
 未显式刻画任务迁移对卫星长期电池寿命的影响。
-
-近两年，面向 LEO 星座高速时变拓扑与时空不均负载，卸载决策正由静态启发式
-向\emph{自适应}与\emph{拓扑感知}方向演进。
-\cite{zhou2024ato}提出时空负载因子并设计时空负载自适应卸载（ATO-SLA），
-用近端策略优化自适应地平衡时延与能耗；
-\cite{zhao2024sta}引入时空注意力增强的近端策略优化（STA-PPO），
-以空间注意力刻画卫星运动、时间注意力刻画任务到达依赖，提升动态拓扑下的调度性能；
-图注意力（GAT）亦被用于拥塞感知的多跳边缘卸载\cite{gapo2025}与卫星网络资源编排，
-以置换不变的方式聚合邻域状态、增强对拓扑变化的泛化。
-然而，这些自适应/注意力方法大多面向单跳或固定跳数的多跳设置、且以时延或能耗为目标，
-既未将中继深度本身作为随任务时间裕度自适应的决策量，
-也未纳入放电深度引起的长期电池寿命损伤。
-本文据此把静态多跳升级为\emph{截止时间自适应的无环多跳}，
-并采用\emph{置换等变的图注意力邻域策略}，在电池感知目标下统一建模。
 
 卫星在地影区依赖星载电池供能，
 因此电池健康是影响在轨计算可持续性的关键因素。
@@ -275,7 +257,7 @@ $d^i_{\max}$（s）为任务截止时间。
 
 系统为每个活跃任务$i$维护运行时状态记录
 $\mathcal{R}^i = (k^i,~\Delta^i_{trans})$，
-其中$k^i \in \{0,1,\ldots,K_{\mathrm{hard}}\}$为已转发跳数，
+其中$k^i \in \{0,1,\ldots,K_{\max}\}$为已转发跳数，
 初始值$k^i=0$；
 $\Delta^i_{trans}$（s）为已累计ISL传输时延，
 初始值$\Delta^i_{trans}=0$。
@@ -432,11 +414,15 @@ $\alpha_n(t)$在时隙$t$末尾加入$Q^B_n(t+1)$，
 \subsection{完整端到端时延}
 % ============================================================
 
-与文献\cite{zhang2024mhspo}采用固定跳数上限$K_{\max}$的静态多跳不同，
-本文采用\textbf{截止时间自适应的无环多跳逐跳卸载策略}：
-每个任务的可行中继深度随其剩余时间预算与网络负载自适应调节，
-并显式约束转发路径无环，具体定义见式\eqref{eq:adaptive_budget}--\eqref{eq:loopfree}。
-在此策略下，任务$i$的端到端时延为：
+本文采用\textbf{电池感知的 Lyapunov 背压（backpressure）多跳逐跳卸载}策略：
+每颗卫星在每个时隙对转发队列中的任务，依据其与邻居之间的\emph{差分积压}
+（backpressure）并叠加电池寿命惩罚，逐跳地将任务压向队列更空、电池状态更优的方向，
+从而以纯局部信息实现多卫星协同（跳数上限 $K_{\max}=3$）。
+该背压机制由每时隙 Lyapunov 漂移加惩罚子问题严格导出，
+其差分积压项 $s^i(\tilde{Q}^F_m-\tilde{Q}^F_n)$ 见式\eqref{eq:cost_offload}，
+是经典背压路由\cite{tassiulas1992}在电池感知卫星边缘计算下的推广，
+亦与近年多跳卫星卸载的在线/学习增强方法\cite{zhang2024mhspo,msndo2025}一脉相承。
+在该策略下，任务$i$的端到端时延为：
 \begin{equation}
     d^i_{total} =
     \underbrace{\Delta^i_{trans}}_{\text{累计ISL传输时延}}
@@ -459,37 +445,6 @@ $\alpha_n(t)$在时隙$t$末尾加入$Q^B_n(t+1)$，
 $\Delta^i_{trans}$为已完成的所有ISL跳的
 实际传输时间与传播时延之和，
 按式\eqref{eq:runtime_update}逐跳累积。
-
-\subsubsection{自适应中继深度预算}
-
-固定跳数上限（如 MHSPO\cite{zhang2024mhspo} 的 $K_{\max}$）无法感知任务的
-时间裕度与网络负载：对时间紧迫的任务，额外中继只会徒增传输能耗与放电深度；
-对时间宽裕的任务，过早封顶又会限制星座协同。
-受近两年时空负载自适应卸载\cite{zhou2024ato}的启发，
-本文将中继深度由常数改为随剩余时间预算自适应的量。
-定义任务$i$在时隙$t$的\textbf{自适应中继深度预算}：
-\begin{equation}
-    K_i(t) = \mathrm{clip}\!\left(
-    \left\lfloor \frac{d^i_{remain}(t)}{T_{hop}} \right\rfloor,
-    ~K_{\min},~K_{\mathrm{hard}}\right),
-    \label{eq:adaptive_budget}
-\end{equation}
-其中$T_{hop} = \bar{s}/\bar{b} + \tau$为参考单跳代价（平均传输时间加一个时隙的排队缓冲），
-$K_{\mathrm{hard}}$为保证跳数约束有界的硬上限，$K_{\min}$为下限。
-剩余时间越紧，$K_i(t)$越小，抑制无谓中继；时间宽裕时放开至$K_{\mathrm{hard}}$以
-充分利用邻域协同。注意$K_i(t)\le K_{\mathrm{hard}}$恒成立，
-故跳数约束（C3）仍以常数$K_{\mathrm{hard}}$为界，不改变后续 Lyapunov 漂移界的常数项。
-
-\subsubsection{无环多跳约束}
-
-为避免逐跳近视转发引发任务在星座内成环往返（放大时延与传输放电深度），
-本文为每个任务维护已访问卫星集合$\mathcal{V}^i$（初始为接入卫星），
-每完成一跳即将来源卫星并入$\mathcal{V}^i$，并禁止转发至已访问卫星：
-\begin{equation}
-    \beta^i_{nm}(t) = 0,\quad \forall m \in \mathcal{V}^i。
-    \label{eq:loopfree}
-\end{equation}
-该约束保证任务路径为简单路径，与自适应预算$K_i(t)$共同经动作掩码强制满足。
 
 在仿真评估中，任务的真实端到端时延采用：
 \begin{equation}
@@ -517,8 +472,8 @@ $+1$表示任务$i$加入后的队列增量，
 式\eqref{eq:est_comp_delay}为保守估计，
 有利于保证截止时间约束不被违反。
 
-当$k^i = K_i(t)$（达到自适应预算）或所有未访问邻居均不满足式\eqref{eq:deadline}时，
-转发动作不可行，截止时间可行性条件退化为本地处理条件：
+当$k^i = K_{\max}$时转发动作不可行，
+截止时间可行性条件退化为本地处理条件：
 \begin{equation}
     \hat{d}^{i,C}_n \leq d^i_{remain}(t)。
     \label{eq:deadline_local}
@@ -722,11 +677,6 @@ $T_{nm}$ & 星间链路传播时延（s），快照内固定 \\
 $\tau$ & 时隙长度（s） \\
 $s^i, h^i, d^i_{\max}$ & 任务大小（bits）、每bit CPU周期数、截止时间（s） \\
 $s_{\min}, s_{\max}$ & 任务数据量下界、上界（bits） \\
-$k^i$ & 任务$i$的已转发跳数 \\
-$K_i(t)$ & 任务$i$的自适应中继深度预算，见式\eqref{eq:adaptive_budget} \\
-$K_{\mathrm{hard}}, K_{\min}$ & 中继深度硬上限、下限 \\
-$T_{hop}$ & 参考单跳代价（s），$\bar{s}/\bar{b}+\tau$ \\
-$\mathcal{V}^i$ & 任务$i$已访问卫星集合（无环约束） \\
 $Q^F_n(t)$ & 转发队列总数据量（bits） \\
 $Q^B_n(t)$ & 计算队列总数据量（bits） \\
 $N^B_n(t)$ & 计算队列任务数（个） \\
@@ -801,8 +751,7 @@ $g^i_n(t),\,w^i_n(t)$ & 任务$i$的剩余CPU周期数、剩余可用时间 \\
 &\text{(C2)} \quad \frac{s^i}{b_{nm}} + T_{nm}
 + \hat{d}^{i,C}_m \leq d^i_{remain}(t),
 \quad \forall \beta^i_{nm}(t)=1 \\
-&\text{(C3)} \quad k^i \leq K_i(t) \leq K_{\mathrm{hard}},\quad
-\beta^i_{nm}(t)=0~\forall m\in\mathcal{V}^i,
+&\text{(C3)} \quad k^i \leq K_{\max},
 \quad \forall i \in \mathcal{I} \\
 &\text{(C4)} \quad \lim_{T\to\infty} \frac{1}{T}
 \sum_{t=0}^{T-1} \mathbb{E}[Q^F_n(t) + Q^B_n(t)] < \infty,
@@ -819,9 +768,7 @@ $g^i_n(t),\,w^i_n(t)$ & 任务$i$的剩余CPU周期数、剩余可用时间 \\
 和转发决策$\beta = \{\beta^i_{nm}(t)\}$。
 C1要求每个任务至多选择一个动作（本地处理、转发或暂留）。
 C2为转发截止时间可行性约束，通过动作掩码强制满足，不进入Lyapunov推导。
-C3为自适应无环跳数约束：$k^i$受自适应预算$K_i(t)$（式\eqref{eq:adaptive_budget}）限制、
-以硬上限$K_{\mathrm{hard}}$为界，且禁止转发至已访问卫星集合$\mathcal{V}^i$（无环，式\eqref{eq:loopfree}），
-同样通过动作掩码强制满足；由于$K_i(t)\le K_{\mathrm{hard}}$，漂移界常数项不受影响。
+C3为跳数约束。
 C4保证转发队列和计算队列的长期稳定性，
 C5通过虚拟队列$Z_n(t)$保证DoD长期约束满足。
 
@@ -944,6 +891,12 @@ a^{i*}_n(t) = \arg\min_{a \in \mathcal{A}^{feasible}_i} c^a_n(i,t)。
 \label{eq:scheduling}
 \end{equation}
 
+其中转发边费用 $c^{offload}_{nm}(i,t)$ 的首项 $s^i(\tilde{Q}^F_m(t)-\tilde{Q}^F_n(t))$
+即\emph{背压项}：邻居 $m$ 的（扰动）转发积压越小于本星，转发代价越低，
+任务因而被逐跳压向轻载方向；后两项 $V\Delta\mathcal{L}^{i,trans}_n$ 与
+$Z_n(t)\Delta DoD^{i,trans}_n$ 则把电池寿命损伤与放电深度约束注入路由偏好，
+形成\emph{电池感知的背压多跳}。逐跳重复该决策即在无需全局拓扑的前提下
+自然涌现多跳协同路径。
 本文采用参数共享MAPPO通过神经网络学习近似最优策略，
 理由如下：边费用依赖$\Delta\mathcal{L}^{i,comp}_n$
 和$\Delta DoD^{i,comp}_n$的非线性结构；
@@ -996,11 +949,9 @@ $\tau^{switch}_n(t)$让智能体预判充放电状态切换；
 \begin{equation}
 \mathcal{A}^{feasible}_i =
 \{local\}
-\cup \{m \in \mathcal{N}_n : \text{C2满足},~k^i < K_i(t),~m \notin \mathcal{V}^i\}。
+\cup \{m \in \mathcal{N}_n : \text{C2满足且}k^i < K_{\max}\}。
 \label{eq:feasible_actions}
 \end{equation}
-即可行邻居须同时满足截止时间可行性（C2）、未达自适应中继预算$K_i(t)$、
-且不构成环路（$m\notin\mathcal{V}^i$）。
 
 本地处理始终为可行动作。
 若$d^i_{remain}(t) \leq 0$则任务超时从队列移除。
@@ -1071,40 +1022,19 @@ $P^Q_n$为队列压力，权重$(w_d, w_{to}, w_{re}, w_h, w_q) = (10, 5, 5, 2, 
 
 \subsubsection{网络结构}
 
-\textbf{注意力邻域 Actor 网络：}
-静态多跳方法将邻居状态按固定顺序拼接为定长向量，
-隐式绑定 Walker 星座的四邻居结构，难以泛化到拓扑变化或异构邻居数。
-受近两年图注意力/时空注意力卸载方法\cite{zhao2024sta,gapo2025}的启发，
-本文将 Actor 设计为\textbf{置换等变的图注意力（GAT 风格）邻域编码器}。
-记本地上下文（卫星ID、本地节点状态与当前任务）为$c_n(t)$，
-第$m$个邻居的原始特征为$x_m$。首先以共享参数对每个邻居生成 message 嵌入
-\begin{equation}
-e_m = \phi_{nbr}\big([x_m,\,c_n(t)]\big),\quad m \in \mathcal{N}_n,
-\label{eq:nbr_embed}
-\end{equation}
-再以本地上下文为 query、邻居嵌入为 key/value 做注意力聚合，
-得到置换不变的邻域上下文向量
-\begin{equation}
-\omega_m = \frac{\exp\!\big(q^\top k_m/\sqrt{d}\big)}
-{\sum_{m'\in\mathcal{N}_n}\exp\!\big(q^\top k_{m'}/\sqrt{d}\big)},\quad
-u_n = \sum_{m\in\mathcal{N}_n}\omega_m\, v_m,
-\label{eq:attn}
-\end{equation}
-其中$q=W_q\,\phi_{ctx}(c_n(t))$，$k_m=W_k e_m$，$v_m=W_v e_m$。
-本地动作 logit 由$[\phi_{ctx}(c_n(t)),u_n]$给出，
-每个邻居动作 logit 由共享打分头$\psi(e_m)$给出，最后经动作掩码屏蔽不可行动作后 softmax：
+\textbf{Actor网络：}
+输入状态向量$s_n(t)$，
+输出可行动作上的概率分布（经动作掩码屏蔽不可行动作）：
 \begin{equation}
 \pi_\theta(a^i_n | s_n(t))
-\propto \exp\big(f_\theta(s_n(t))\big)
+\propto \exp(f_\theta(s_n(t)))
 \cdot \mathbf{1}[a \in \mathcal{A}^{feasible}_i]。
 \label{eq:actor}
 \end{equation}
-由于邻居打分头参数共享、聚合对邻居顺序不变，该结构对邻居置换等变，
-不依赖固定邻居编号，从而具备对动态拓扑与可变邻居数的泛化能力。
 
 \textbf{邻域Critic网络：}
-Critic 仅用于集中式训练（CTDE），执行阶段不参与决策；
-其输入将卫星$n$与邻居状态拼接：
+在Walker星座中，每颗卫星固定有4个邻居，
+邻居状态按前向、后向、左侧、右侧的固定顺序拼接：
 \begin{equation}
 s^{critic}_n(t) = [s_n(t),\
 \{s_m(t)\}_{m \in \mathcal{N}_n}]。
@@ -1438,17 +1368,6 @@ $Q^F_n(0) = \theta_n$，$Q^B_n(0) = 0$，$Z_n(0) = 0$，
 \subsection{仿真设置}
 \label{subsec:sim_setup}
 
-% ============================================================
-% 注意（作者提醒，编译不显示）：
-% 本节图表为“静态 K_MAX 多跳 + MLP Actor”旧代码所得结果。
-% 引入自适应无环多跳 + 图注意力 Actor 后，需用新代码重跑：
-%   python main_run.py --mode comparison        （LyaMAPPO 与基线对比）
-% 并建议补充两组新消融：
-%   (i)  StaticHop：设 ADAPTIVE_HOP=False, LOOP_PREVENTION=False（退化为静态多跳）
-%   (ii) MLP-Actor：设 USE_ATTENTION_ACTOR=False（退化为固定顺序拼接）
-% 以分别验证“自适应多跳”与“注意力邻域编码”两模块的增益。
-% 重跑后请据新结果更新下方数值与分析结论。
-% ============================================================
 
 我们考虑一个部署于低轨（LEO）Walker 星座之上的卫星移动边缘计算（MEC）网络，星座轨道高度 550~km，
 由分布于16个轨道平面上的192颗卫星组成。
@@ -1479,10 +1398,7 @@ ISL 传输速率均匀分布于 [100,300] Mb/s，传输功率 0.1 W，
 任务大小 $s^i$ & 10--50~Mb \\
 计算密度 $h^i$ & 10--30~cycles/bit~\cite{zhang2024mhspo} \\
 截止时间 & 1--12~s \\
-中继深度硬上限 $K_{\mathrm{hard}}$ / 下限 $K_{\min}$ & 3 / 1 \\
-自适应中继预算 $K_i(t)$ & $\lfloor d^i_{remain}/T_{hop}\rfloor$ 截断至 $[1,3]$ \\
-参考单跳代价 $T_{hop}$ & $\bar{s}/\bar{b}+\tau$ \\
-无环多跳约束 & 启用 \\
+最大转发跳数 & 3 \\
 CPU 频率上限 $c_n$ & 2~GHz~\cite{zhang2024mhspo} \\
 能耗系数 $\kappa$ & $1\times10^{-26}$~\cite{zhang2024mhspo} \\
 单星并发上限 & 6 \\
@@ -1717,11 +1633,13 @@ LyapunovGreedy 表明，若缺乏强化学习的长视野决策能力，系统�
 从而在损耗函数的强凸性下换取指数级的寿命收益；消融实验验证了电池感知与强化学习两个
 组件缺一不可。
 
-本文仍存在若干局限，有待后续研究：
-% 其一，主结果基于单一训练所得策略，训练过程本身的
-% 方差有待通过多次独立训练进一步刻画；其二，DVFS 与电池模型均为模型级抽象，尚未纳入
-% 硬件在环验证；其三，本文聚焦单服务卸载场景，未涉及资源切片等多服务扩展。未来工作将
-% 围绕多服务资源联合优化、硬件在环验证与更大规模原生评估展开。
+本文仍存在若干局限，有待后续研究：其一，主结果基于单一训练所得策略，
+训练过程本身的方差有待通过多次独立训练进一步刻画；其二，DVFS 与电池模型均为
+模型级抽象，尚未纳入硬件在环验证；其三，本文聚焦单服务卸载场景，未涉及资源切片
+等多服务扩展；其四，多跳采用固定跳数上限 $K_{\max}$ 的背压逐跳转发，
+将中继深度随任务时间裕度与网络负载自适应调节、并引入无环约束，
+有望进一步降低时延与传输能耗。未来工作将围绕多服务资源联合优化、
+自适应多跳、硬件在环验证与更大规模原生评估展开。
 
 % ============================================================
 \begin{thebibliography}{99}
@@ -1747,26 +1665,6 @@ on Satellite Systems' Availability.
 Computation Offloading in LEO Satellite-Terrestrial
 Edge Computing Systems.
 
-\bibitem{zhou2024ato}
-J. Zhou, Y. Zhao, L. Zhao, H. Cai, and F. Xiao,
-``Adaptive task offloading with spatiotemporal load awareness
-in satellite edge computing,''
-\textit{IEEE Trans. Netw. Sci. Eng.},
-vol. 11, pp. 5311--5322, 2024.
-
-\bibitem{zhao2024sta}
-D. Zhao, R. Ding, and B. Song,
-``Satellite-assisted 6G wide-area edge intelligence:
-dynamics-aware task offloading and resource allocation
-for remote IoT services,''
-\textit{Sci. China Inf. Sci.}, 2024,
-doi: 10.1007/s11432-024-4258-x.
-
-\bibitem{gapo2025}
-``GAPO: A graph attention-based reinforcement learning algorithm
-for congestion-aware task offloading in multi-hop vehicular
-edge computing,'' 2025.
-
 \bibitem{huang2024td3}
 T. Huang, Z. Fang, Q. Tang, R. Xie, T. Chen, and F. R. Yu,
 ``Dual-timescales optimization of task scheduling and resource
@@ -1781,6 +1679,18 @@ L. Liu, and Z. Xiong,
 edge computing networks,''
 \textit{IEEE Trans. Mobile Comput.},
 vol. 23, no. 4, pp. 3077--3091, Apr. 2024.
+
+\bibitem{tassiulas1992}
+L. Tassiulas and A. Ephremides,
+``Stability properties of constrained queueing systems and scheduling
+policies for maximum throughput in multihop radio networks,''
+\textit{IEEE Trans. Autom. Control},
+vol. 37, no. 12, pp. 1936--1948, Dec. 1992.
+
+\bibitem{msndo2025}
+``Delay-cost computation offloading for on-board emergency tasks
+in LEO satellite edge computing networks,''
+\textit{Future Gener. Comput. Syst.}, vol. 168, 2025.
 
 \bibitem{chen2025tasri}
 Y. Chen \textit{et al.},
