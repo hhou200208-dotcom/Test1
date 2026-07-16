@@ -62,6 +62,8 @@ def parse_args():
     p.add_argument('--n_runs',      type=int,   default=None,
                    help='每个 K 的独立评估 run 数（覆盖 N_EVAL_RUNS）')
     p.add_argument('--t_eval',      type=int,   default=None)
+    p.add_argument('--out_dir',     type=str,   default=None,
+                   help='复用/续跑的父结果目录；若其 json 已含某 K 则跳过（断点续跑）')
     p.add_argument('--debug',       action='store_true')
     p.add_argument('--no_plots',    action='store_true')
     return p.parse_args()
@@ -224,22 +226,42 @@ def main():
     else:
         k_grid = K_GRID_DEFAULT
 
-    parent_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-        'results', time.strftime('%Y%m%d_%H%M%S') + '_SensitivityK')
+    if args.out_dir:
+        parent_dir = os.path.abspath(args.out_dir)
+    else:
+        parent_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+            'results', time.strftime('%Y%m%d_%H%M%S') + '_SensitivityK')
     os.makedirs(parent_dir, exist_ok=True)
+    results_json = os.path.join(parent_dir, 'sensitivity_k_results.json')
+
+    # 断点续跑：加载已有结果，跳过已完成的 K
+    all_results = []
+    done_ks = set()
+    if os.path.isfile(results_json):
+        try:
+            with open(results_json, encoding='utf-8') as f:
+                all_results = json.load(f)
+            done_ks = {r['K'] for r in all_results}
+            if done_ks:
+                print(f"[续跑] 已存在结果 K={sorted(done_ks)}，将跳过")
+        except Exception as e:
+            print(f"[续跑] 读取已有 json 失败，忽略：{e}")
+
     print(f"K 敏感性分析父目录：{parent_dir}")
     print(f"加载模型：{ckpt_abs}")
     print(f"K 取值：{k_grid} | λ_high={args.lambda_high}")
 
-    all_results = []
     for k in k_grid:
+        if k in done_ks:
+            print(f"\n[跳过] K_MAX = {k} 已完成")
+            continue
         print(f"\n{'='*70}\n  K_MAX = {k}\n{'='*70}")
         t0 = time.time()
         res = eval_one_k(k, args, ckpt_abs)
         all_results.append(res)
         print(f"[K={k}] 完成，耗时 {(time.time()-t0)/60:.1f} 分钟")
-        with open(os.path.join(parent_dir, 'sensitivity_k_results.json'), 'w',
-                  encoding='utf-8') as f:
+        all_results = sorted(all_results, key=lambda x: x['K'])
+        with open(results_json, 'w', encoding='utf-8') as f:
             json.dump(all_results, f, indent=2, ensure_ascii=False)
 
     # 汇总表
