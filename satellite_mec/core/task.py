@@ -21,10 +21,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Optional, Set, Tuple
-
-if TYPE_CHECKING:
-    from core.config import Config
+from typing import Tuple
 
 
 @dataclass
@@ -63,12 +60,10 @@ class Task:
     processed:        float = field(default=0.0)
     status:           str   = field(default='queuing')
     finish_slot:      int   = field(default=-1)
-    visited_sats:     Set[int] = field(default_factory=set)  # 无环多跳：已停留过的卫星
 
     def __post_init__(self):
         if self.current_sat == -1:
             self.current_sat = self.access_sat
-        self.visited_sats.add(self.access_sat)
 
     # ── 时间相关 ──────────────────────────────────────────────
     def remain_time(self, current_slot: int) -> float:
@@ -143,46 +138,16 @@ class Task:
         slots = math.ceil(self.size * self.cpu_cycles * (nb_m + 1) / (cpu_freq_m * tau))
         return slots * tau
 
-    def adaptive_hop_budget(self, current_slot: int, cfg: "Config") -> int:
-        """
-        计算截止时间自适应的中继深度预算 K_i(t)。
-
-        K_i(t) = clip( floor( d_remain_i(t) / T_HOP_REF ), K_MIN, K_HARD )
-
-        剩余时间越紧，允许的中继跳数越少（避免无谓中继带来的传输能耗/DoD）；
-        剩余时间充裕时可放开到硬上限 K_HARD 以充分利用星座协同。
-        是否启用（相对静态 K_MAX）由调用方决定，见 Satellite.get_action_mask。
-
-        Returns
-        -------
-        int : 当前任务允许的最大转发跳数
-        """
-        remain = self.remain_time(current_slot)
-        if remain <= 0.0:
-            return 0
-        k = int(math.floor(remain / max(cfg.T_HOP_REF, 1e-9)))
-        return int(max(cfg.K_MIN, min(cfg.K_HARD, k)))
-
     def feasible_forward(self, b_nm: float, t_nm: float, nb_m: int,
                          cpu_freq_m: float, tau: float,
-                         current_slot: int, k_max: int,
-                         neighbor_id: Optional[int] = None,
-                         loop_free: bool = False) -> bool:
+                         current_slot: int, k_max: int) -> bool:
         """
         判断转发到邻居是否在截止时间内可完成（含传输+计算）。
-
-        Parameters
-        ----------
-        k_max        : 当前任务允许的最大转发跳数（可为自适应预算 K_i(t)）
-        neighbor_id  : 候选邻居卫星 ID（用于无环判定），None 表示不判环
-        loop_free    : True 时禁止转发到已访问过的卫星
 
         Returns
         -------
         bool : True 表示可行
         """
-        if loop_free and neighbor_id is not None and neighbor_id in self.visited_sats:
-            return False
         if self.hops >= k_max:
             return False
         trans_time = self.size / b_nm + t_nm

@@ -58,37 +58,11 @@ class Actor(nn.Module):
         action_dim = config.get_action_dim()
         hidden_dim = config.HIDDEN_DIM
 
-        self.use_attention = getattr(config, 'USE_ATTENTION_ACTOR', False)
-        self.n_nbr    = config.N_NEIGHBORS
-        self.nbr_feat = 5                                   # 每个邻居的特征维度
-        self.ctx_dim  = state_dim - self.n_nbr * self.nbr_feat  # id+local+task = 12
-
         self.input_norm = nn.LayerNorm(state_dim)
-
-        if self.use_attention:
-            d = getattr(config, 'ATTN_DIM', 64)
-            self.d_attn = d
-            # 上下文（卫星 id + 本地节点状态 + 当前任务）编码
-            self.ctx_enc = nn.Sequential(
-                nn.Linear(self.ctx_dim, hidden_dim), nn.ReLU(),
-                nn.Linear(hidden_dim, d), nn.ReLU())
-            # 逐邻居 message 编码（邻居原始特征 ⊕ 上下文），参数在邻居间共享
-            self.nbr_enc = nn.Sequential(
-                nn.Linear(self.nbr_feat + self.ctx_dim, hidden_dim), nn.ReLU(),
-                nn.Linear(hidden_dim, d), nn.ReLU())
-            # GAT 风格注意力聚合
-            self.q_proj = nn.Linear(d, d)
-            self.k_proj = nn.Linear(d, d)
-            self.v_proj = nn.Linear(d, d)
-            # 动作头：本地 logit 由上下文+聚合邻域给出；每邻居 logit 由共享打分头给出
-            self.local_head = nn.Linear(2 * d, 1)
-            self.nbr_head   = nn.Linear(d, 1)
-            self._init_attention()
-        else:
-            self.fc1 = nn.Linear(state_dim,  hidden_dim)
-            self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-            self.fc3 = nn.Linear(hidden_dim, action_dim)
-            self._init_weights()
+        self.fc1 = nn.Linear(state_dim,  hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, action_dim)
+        self._init_weights()
 
     def _init_weights(self):
         for layer in [self.fc1, self.fc2]:
@@ -97,63 +71,14 @@ class Actor(nn.Module):
         nn.init.orthogonal_(self.fc3.weight, gain=0.01)
         nn.init.constant_(self.fc3.bias, 0.0)
 
-    def _init_attention(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.orthogonal_(m.weight, gain=math.sqrt(2))
-                nn.init.constant_(m.bias, 0.0)
-        # 输出头小增益，保证初始策略接近均匀
-        for head in [self.local_head, self.nbr_head]:
-            nn.init.orthogonal_(head.weight, gain=0.01)
-            nn.init.constant_(head.bias, 0.0)
-
-    def _attention_logits(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        置换等变的注意力邻域打分。
-
-        输入
-        ----
-        x : [B, state_dim]，已归一化的状态
-            布局 [id(1) | local(6) | neighbors(n_nbr×5) | task(5)]
-
-        输出
-        ----
-        logits : [B, 1 + n_nbr]，动作 logits（本地 + 各邻居）
-        """
-        B  = x.shape[0]
-        nn_, nf = self.n_nbr, self.nbr_feat
-        id_local = x[:, :7]                       # [B,7]  (id + local6)
-        nbr_flat = x[:, 7:7 + nn_ * nf]           # [B, n_nbr*5]
-        task_    = x[:, 7 + nn_ * nf:]            # [B,5]
-        ctx = torch.cat([id_local, task_], dim=-1)          # [B, ctx_dim]
-        nbr = nbr_flat.view(B, nn_, nf)                     # [B, n_nbr, 5]
-
-        h_ctx   = self.ctx_enc(ctx)                         # [B, d]
-        ctx_rep = ctx.unsqueeze(1).expand(B, nn_, self.ctx_dim)
-        e = self.nbr_enc(torch.cat([nbr, ctx_rep], dim=-1))  # [B, n_nbr, d]
-
-        q = self.q_proj(h_ctx).unsqueeze(1)                 # [B,1,d]
-        k = self.k_proj(e)                                  # [B,n_nbr,d]
-        v = self.v_proj(e)                                  # [B,n_nbr,d]
-        scores  = (q * k).sum(-1) / math.sqrt(self.d_attn)  # [B,n_nbr]
-        attn    = F.softmax(scores, dim=-1).unsqueeze(-1)   # [B,n_nbr,1]
-        context = (attn * v).sum(1)                         # [B,d]
-
-        local_logit = self.local_head(torch.cat([h_ctx, context], dim=-1))  # [B,1]
-        nbr_logits  = self.nbr_head(e).squeeze(-1)          # [B,n_nbr]
-        return torch.cat([local_logit, nbr_logits], dim=-1)  # [B, 1+n_nbr]
-
     def forward(self, state: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         squeeze = state.dim() == 1
         if squeeze:
             state, mask = state.unsqueeze(0), mask.unsqueeze(0)
         x = self.input_norm(state)
-        if self.use_attention:
-            logits = self._attention_logits(x)
-        else:
-            x = F.relu(self.fc1(x))
-            x = F.relu(self.fc2(x))
-            logits = self.fc3(x)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        logits = self.fc3(x)
         logits = logits + (1.0 - mask) * (-1e9)   # 屏蔽非法动作
         probs  = F.softmax(logits, dim=-1)
         return probs.squeeze(0) if squeeze else probs

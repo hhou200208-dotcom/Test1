@@ -63,10 +63,6 @@ class SatelliteMECEnv(EnvInterface):
         self.phase:         str  = 'train'
         self.slots_in_episode: int = 0
         self._global_info:  Dict = {}
-        # 多跳决策模式（按策略归属）：本文方法启用自适应中继预算+无环约束，
-        # 经典基线（MHSPO/GDCO/…）默认静态 K_MAX、无环约束关闭，保证对比公平。
-        self._cur_adaptive_hop: bool = False
-        self._cur_loop_free:    bool = False
 
         # 累计统计
         self.episode_arrived: int = 0
@@ -108,10 +104,6 @@ class SatelliteMECEnv(EnvInterface):
         t   = self.current_slot
         cfg = self.cfg
         sats = self.constellation.satellites
-
-        # 多跳决策模式取自当前策略（缺省属性=静态经典多跳，用于基线）
-        self._cur_adaptive_hop = getattr(policy, 'adaptive_hop', False) if policy is not None else False
-        self._cur_loop_free    = getattr(policy, 'loop_free', False) if policy is not None else False
 
         # 1. 广播全局状态 & 更新日照
         self._global_info = self.constellation.exchange_info()
@@ -167,9 +159,7 @@ class SatelliteMECEnv(EnvInterface):
 
             for task in tasks_to_process:
                 neighbor_nb = {nid: self._global_info[nid]['nb'] for nid in sat.neighbors}
-                mask = sat.get_action_mask(task, t, neighbor_nb,
-                                           adaptive_hop=self._cur_adaptive_hop,
-                                           loop_free=self._cur_loop_free)
+                mask = sat.get_action_mask(task, t, neighbor_nb)
                 if mask.sum() == 0:
                     continue
                 state = sat.get_state(task, t, neighbor_info)
@@ -289,9 +279,7 @@ class SatelliteMECEnv(EnvInterface):
             n = sat.sat_id
             neighbor_nb = {nid: self._global_info.get(nid, {}).get('nb', 0)
                            for nid in sat.neighbors}
-            masks[n] = [sat.get_action_mask(task, t, neighbor_nb,
-                                            adaptive_hop=self._cur_adaptive_hop,
-                                            loop_free=self._cur_loop_free)
+            masks[n] = [sat.get_action_mask(task, t, neighbor_nb)
                         for task in sat.forward_queue if not task.is_timeout(t)]
         return masks
 
