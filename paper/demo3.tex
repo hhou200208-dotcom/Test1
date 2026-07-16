@@ -59,8 +59,8 @@
 Lyapunov理论塑形奖励驱动的基于参数共享MAPPO的分布式在线调度算法求解，
 使策略学习过程与 Lyapunov 漂移加惩罚目标保持一致，从而获得面向长期电池寿命优化的在线调度策略。仿真结果表明，
 与当前主流基准算法相比，我们所提算法在保持第一梯队端到端时延与稳定队列的同时，
-大幅降低了系统累计的电池寿命损耗，
-% 将系统累计电池寿命损耗降低约 29\%到65\%,
+将系统累计电池寿命损耗降至最强基准的约三分之一、系统能耗降至约一半，
+仅以约 1--5 个百分点的用户满意度为代价，
 在电池寿命与服务质量之间取得了良好的多目标权衡。
 
 \noindent\textbf{关键词：}卫星网络，边缘计算，任务卸载，电池寿命
@@ -1373,12 +1373,12 @@ $Q^F_n(0) = \theta_n$，$Q^B_n(0) = 0$，$Z_n(0) = 0$，
 由分布于16个轨道平面上的192颗卫星组成。
 仿真以时隙长度 $\tau=1$~s
 逐槽推进，运行时长为一个轨道周期（5400 时隙）。
-每颗卫星配备计算能力为 2 GHz 的 CPU \cite{zhang_tmc_2023}，
+每颗卫星配备计算能力为 2 GHz 的 CPU \cite{zhang2024mhspo}，
 ISL 传输速率均匀分布于 [100,300] Mb/s，传输功率 0.1 W，
-星上处理器芯片动态功耗系数$\kappa=10^{-26}$ \cite{zhang_tmc_2023}，
+星上处理器芯片动态功耗系数$\kappa=10^{-26}$ \cite{zhang2024mhspo}，
 星间传播时延设定为相邻卫星直线距离除以光速。
 每个任务数据量在 [10,50] Mb 均匀抽取，
-每个任务计算密度在 [10,30] cycles/bit 均匀抽取 \cite{li_tsc_2024}，
+每个任务计算密度在 [10,30] cycles/bit 均匀抽取 \cite{zhang2024mhspo}，
 截止时间 [1,12] s 均匀生成。
 主要参数汇总于表~\ref{tab:sim_params}。
 
@@ -1426,11 +1426,11 @@ minibatch / epoch / rollout & 64 / 2 / 64 \\
 差异仅来自卸载与调度决策机制。强化学习类算法在相同训练时长下训练，并在多个随机种子上进行评估，
 最终结果取均值统计。本文比较以下四类基线算法：
 \begin{itemize}
-    \item \textbf{TD3-Sched}: 基于 TD3 的连续动作调度方法，能够联合决策卸载与资源分配。
+    \item \textbf{TD3-Sched}\cite{huang2024td3}: 基于 TD3 的连续动作调度方法，能够联合决策卸载与资源分配。
     % 该方法在优化目标中主要关注服务时延和调度代价，不显式建模电池健康损失。
-    \item \textbf{MHSPO}: 面向多跳星间卸载的启发式优化方法，结合邻居负载估计与在线调度，
+    \item \textbf{MHSPO}\cite{zhang2024mhspo}: 面向多跳星间卸载的启发式优化方法，结合邻居负载估计与在线调度，
     以缓解局部拥塞并降低任务处理时延。
-    \item \textbf{GDCO}: 基于博弈论的分布式计算卸载方法，各卫星依据局部代价进行卸载决策，
+    \item \textbf{GDCO}\cite{chen2025gdco}: 基于博弈论的分布式计算卸载方法，各卫星依据局部代价进行卸载决策，
     通过均衡策略降低系统开销。
     \item \textbf{LSO}: 本地卫星处理方案，所有任务均由接入卫星本地处理，不启用星间卸载。
     该方案用于刻画缺乏协同卸载能力时的性能下界。
@@ -1660,11 +1660,6 @@ for LEO Satellite Network Evolving.
 2025A Stochastic Model for Evaluating the Aging Impact
 on Satellite Systems' Availability.
 
-\bibitem{6}
-2025A A Game-Theoretical Approach for Distributed
-Computation Offloading in LEO Satellite-Terrestrial
-Edge Computing Systems.
-
 \bibitem{huang2024td3}
 T. Huang, Z. Fang, Q. Tang, R. Xie, T. Chen, and F. R. Yu,
 ``Dual-timescales optimization of task scheduling and resource
@@ -1710,6 +1705,101 @@ E. Hazan,
 ``Introduction to online convex optimization,''
 \textit{Found. Trends Optim.},
 vol. 2, no. 3-4, pp. 157--325, 2016.
+
+\bibitem{tang2021hybrid}
+Q. Tang, Z. Fei, B. Li, and Z. Han,
+``Computation offloading in LEO satellite networks with hybrid
+cloud and edge computing,''
+\textit{IEEE Internet Things J.},
+vol. 8, no. 11, pp. 9164--9176, Jun. 2021.
+
+\bibitem{ms2024energy}
+S. Xi, B. Shang, H. Zhang, J. Ma, and P. Fan,
+``Energy optimization in multisatellite-enabled edge computing systems,''
+\textit{IEEE Internet Things J.},
+vol. 11, no. 12, pp. 21715--21726, Jun. 2024.
+
+\bibitem{wang2025priority}
+L. Wang, J. Li, M. Dai, and H. Zhang,
+``Low-earth-orbit satellite assisted edge computing for vehicular
+networks: A task priority-based delay minimization approach,''
+\textit{IEEE Internet Things J.},
+vol. 12, no. 17, pp. 35482--35496, Sep. 2025.
+
+\bibitem{chen2025gdco}
+Y. Chen, Y. Yang, J. Hu, Y. Wu, and J. Huang,
+``A game-theoretical approach for distributed computation offloading
+in LEO satellite-terrestrial edge computing systems,''
+\textit{IEEE Trans. Mobile Comput.},
+vol. 24, no. 5, pp. 4389--4402, May 2025.
+
+\bibitem{chen2025uavgame}
+Y. Chen, J. Zhao, Y. Wu, J. Huang, and X. S. Shen,
+``Multi-user task offloading in UAV-assisted LEO satellite edge
+computing: A game-theoretic approach,''
+\textit{IEEE Trans. Mobile Comput.},
+vol. 24, no. 1, pp. 363--378, Jan. 2025.
+
+\bibitem{zhang2024oisl}
+T. Zhang \textit{et al.},
+``Delay-optimal multi-satellite collaborative computation offloading
+supported by OISL in LEO satellite network,''
+\textit{J. Syst. Eng. Electron.},
+vol. 35, no. 4, pp. 805--814, Aug. 2024.
+
+\bibitem{li2025dsms}
+Y. Li \textit{et al.},
+``Computation offloading in delay-sensitive multisatellite
+cooperative edge computing systems,''
+\textit{IEEE Internet Things J.},
+vol. 13, no. 1, pp. 123--137, Jan. 2026.
+
+\bibitem{ji2023dtsat}
+Z. Ji, S. Wu, and C. Jiang,
+``Cooperative multi-agent deep reinforcement learning for computation
+offloading in digital twin satellite edge networks,''
+\textit{IEEE J. Sel. Areas Commun.},
+vol. 41, no. 11, pp. 3414--3429, Nov. 2023.
+
+\bibitem{lai2025hmadrl}
+J. Lai, H. Liu, G. Xu, W. Jiang, X. Wang, and D. Jiang,
+``Joint computation offloading and resource allocation for LEO
+satellite networks using hierarchical multi-agent reinforcement learning,''
+\textit{IEEE Trans. Cogn. Commun. Netw.},
+vol. 11, no. 4, pp. 2554--2567, Aug. 2025.
+
+\bibitem{mao2016eh}
+Y. Mao, J. Zhang, and K. B. Letaief,
+``Dynamic computation offloading for mobile-edge computing with
+energy harvesting devices,''
+\textit{IEEE J. Sel. Areas Commun.},
+vol. 34, no. 12, pp. 3590--3605, Dec. 2016.
+
+\bibitem{energyconstrained}
+L. Cheng, G. Feng, Y. Sun, S. Qin, F. Wang, and T. Q. S. Quek,
+``Energy-constrained satellite edge computing for satellite-terrestrial
+integrated networks,''
+\textit{IEEE Trans. Veh. Technol.},
+vol. 74, no. 2, pp. 3359--3374, Feb. 2025.
+
+\bibitem{chen2025slice}
+Y. Chen \textit{et al.},
+``SLICE: Energy-efficient satellite-ground co-inference via layer-wise
+scheduling optimization,''
+\textit{IEEE Trans. Serv. Comput.},
+vol. 18, no. 4, pp. 2388--2402, Jul.--Aug. 2025.
+
+\bibitem{li2024battery}
+Q. Li \textit{et al.},
+``Battery-aware energy optimization for satellite edge computing,''
+\textit{IEEE Trans. Serv. Comput.},
+vol. 17, no. 2, pp. 437--451, Mar.--Apr. 2024.
+
+\bibitem{liu2024phoenix}
+W. Liu \textit{et al.},
+``In-orbit processing or not? Sunlight-aware task scheduling for
+energy-efficient space edge computing networks,''
+in \textit{Proc. 30th Annu. Int. Conf. Mobile Comput. Netw. (MobiCom)}, 2024.
 
 \end{thebibliography}
 
