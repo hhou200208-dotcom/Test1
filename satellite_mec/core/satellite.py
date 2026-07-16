@@ -286,7 +286,8 @@ class Satellite:
         remain = max(task.remain_time(current_slot), 0.0)
         task_state = np.array([
             task.size / cfg.S_MAX, task.cpu_cycles / cfg.H_MAX,
-            task.hops / max(cfg.K_MAX, 1), task.trans_delay_acc / cfg.D_MAX_MAX,
+            task.hops / max(getattr(cfg, 'K_NORM', cfg.K_MAX), 1),
+            task.trans_delay_acc / cfg.D_MAX_MAX,
             remain / cfg.D_MAX_MAX,
         ], dtype=np.float32)
         return np.concatenate([id_feat, local_state,

@@ -128,6 +128,11 @@ class Config:
         self.L_MAX_CALIBRATED: bool = False
         self.DELTA_DOD_MAX: float = self.DELTA_MAX
         self.Z_MAX: float = self.ORBIT_PERIOD * self.DELTA_MAX
+        # 跳数归一化基准：默认等于 K_MAX。
+        # 在 K 敏感度分析中，策略以固定的 K_MAX（=sweep 上限）训练，
+        # 评估时仅改变转发动作掩码的跳数上限（K_MAX），而状态输入中的
+        # hops 归一化仍沿用训练时的基准 K_NORM，保证观测分布一致（in-distribution）。
+        self.K_NORM: int = self.K_MAX
         self._verify_power_balance()
         self._verify_resource_surplus()
 
@@ -232,3 +237,20 @@ class LoadTestConfig(Config):
     def __init__(self, lambda_value: float):
         super().__init__()
         self.LAMBDA = lambda_value
+
+
+class SensitivityKConfig(Config):
+    """多跳约束上限 K_MAX 敏感度分析配置。
+
+    Parameters
+    ----------
+    k_value : 转发动作掩码使用的最大跳数上限（评估时可变）。
+    k_norm  : hops 特征归一化基准；默认与 k_value 相同。
+              在“单一策略、跨 K 评估”方案中，应将 k_norm 固定为训练时的
+              K_MAX（sweep 上限），使不同 K 下的观测分布保持一致。
+    """
+
+    def __init__(self, k_value: int, k_norm: int = None):
+        self.K_MAX = int(k_value)
+        super().__init__()
+        self.K_NORM = int(k_norm) if k_norm is not None else int(k_value)
