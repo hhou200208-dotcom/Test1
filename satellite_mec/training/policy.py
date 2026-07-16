@@ -77,6 +77,10 @@ class MAPPOPolicy(PolicyInterface):
     ):
         self.cfg           = config
         self.name          = name
+        # 多跳决策机制归属于本文方法：启用自适应中继预算 K_i(t) 与无环多跳约束。
+        # 关闭这两个开关即得到“静态 K_MAX 多跳”的 MAPPO 消融变体。
+        self.adaptive_hop  = getattr(config, 'ADAPTIVE_HOP', False)
+        self.loop_free     = getattr(config, 'LOOP_PREVENTION', False)
         self.lyapunov_calc = lyapunov_calc or LyapunovCalculator(config)
         self.trainer       = MAPPOTrainer(config)
         self.buffer        = RolloutBuffer(config)

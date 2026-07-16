@@ -50,7 +50,17 @@ class Config:
     H_MAX: float = 300.0
     D_MAX_MIN: float = 1.0                              # s，最小截止时间
     D_MAX_MAX: float = 12.0                             # s，最大截止时间
-    K_MAX: int = 3                                      # 最大转发跳数
+    K_MAX: int = 3                                      # 最大转发跳数（硬上限，保留兼容 & 基线）
+
+    # ── 自适应多跳参数 ────────────────────────────────────────
+    # 相比 MHSPO 的静态 K_MAX，本文采用截止时间/负载自适应的中继深度预算：
+    #   K_i(t) = clip( floor( d_remain_i(t) / T_HOP_REF ), K_MIN, K_HARD )
+    # 硬上限 K_HARD 保证跳数约束 C3 有界（不进入 Lyapunov 常数），
+    # 有效预算 K_i(t) 随剩余时间自适应收缩，避免紧任务无谓中继。
+    ADAPTIVE_HOP: bool = True                           # 关闭则退化为静态 K_MAX
+    LOOP_PREVENTION: bool = True                        # 无环多跳：禁止回访已访问卫星
+    K_HARD: int = 3                                     # 自适应预算硬上限（= 旧 K_MAX）
+    K_MIN: int = 1                                      # 自适应预算下限
 
     # ── 计算参数 ──────────────────────────────────────────────
     CPU_FREQ: float = 2e9                               # cycles/s
@@ -101,6 +111,10 @@ class Config:
     # ── 网络结构 ──────────────────────────────────────────────
     HIDDEN_DIM: int = 256
     N_NEIGHBORS: int = 4
+    # 注意力邻域 Actor：GAT 风格置换不变编码 + 逐邻居打分，
+    # 替代固定顺序邻居拼接，支持可变邻居数/动态拓扑泛化。
+    USE_ATTENTION_ACTOR: bool = True
+    ATTN_DIM: int = 64                                 # 注意力嵌入维度
 
     # ── 随机种子 ──────────────────────────────────────────────
     SEED: int = 42
@@ -128,6 +142,10 @@ class Config:
         self.L_MAX_CALIBRATED: bool = False
         self.DELTA_DOD_MAX: float = self.DELTA_MAX
         self.Z_MAX: float = self.ORBIT_PERIOD * self.DELTA_MAX
+
+        # 自适应中继深度的参考单跳代价（s）：平均传输时间 + 一个时隙的排队缓冲。
+        # 用于把剩余时间预算折算为可承受的最大中继跳数。
+        self.T_HOP_REF: float = self.S_AVG / self.B_AVG + self.TAU
         self._verify_power_balance()
         self._verify_resource_surplus()
 

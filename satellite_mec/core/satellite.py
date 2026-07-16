@@ -225,7 +225,9 @@ class Satellite:
 
     # ── 动作决策 ──────────────────────────────────────────────
     def get_action_mask(self, task: "Task", current_slot: int,
-                        neighbor_nb: Dict[int, int]) -> np.ndarray:
+                        neighbor_nb: Dict[int, int],
+                        adaptive_hop: Optional[bool] = None,
+                        loop_free: Optional[bool] = None) -> np.ndarray:
         """
         计算任务的合法动作掩码。
 
@@ -234,6 +236,9 @@ class Satellite:
         task         : 待调度任务
         current_slot : 当前时隙
         neighbor_nb  : {neighbor_id: 当前并发任务数}
+        adaptive_hop : 是否启用截止时间自适应中继预算 K_i(t)；None 时回退到 cfg.ADAPTIVE_HOP。
+                       该开关按“决策机制”归属于具体策略（本文方法启用，经典基线保持静态 K_MAX）。
+        loop_free    : 是否启用无环多跳约束；None 时回退到 cfg.LOOP_PREVENTION。
 
         Returns
         -------
@@ -243,11 +248,16 @@ class Satellite:
         mask = np.zeros(cfg.get_action_dim(), dtype=np.float32)
         if self.nb_hat < cfg.MAX_DISPATCH:
             mask[0] = 1.0
+        use_adaptive = getattr(cfg, 'ADAPTIVE_HOP', False) if adaptive_hop is None else adaptive_hop
+        use_loopfree = getattr(cfg, 'LOOP_PREVENTION', False) if loop_free is None else loop_free
+        # 自适应中继深度预算 K_i(t)；未启用时退化为静态硬上限 K_MAX（经典多跳）
+        k_eff = task.adaptive_hop_budget(current_slot, cfg) if use_adaptive else cfg.K_MAX
         for idx, neighbor_id in enumerate(self.neighbors):
             if task.feasible_forward(
                 self.link_rates[neighbor_id], self.prop_delays[neighbor_id],
                 neighbor_nb.get(neighbor_id, 0), cfg.CPU_FREQ, cfg.TAU,
-                current_slot, cfg.K_MAX
+                current_slot, k_eff,
+                neighbor_id=neighbor_id, loop_free=use_loopfree,
             ):
                 mask[idx + 1] = 1.0
         return mask
@@ -382,7 +392,9 @@ class Satellite:
             self.z_hat       += lyapunov_calc.delta_dod_trans(task, b_nm)
             self._trans_energy += self.cfg.P_T * task.size / b_nm
             task.forward(b_nm=b_nm, t_nm=t_nm)
+            task.visited_sats.add(self.sat_id)   # 无环多跳：记录来源卫星
             task.current_sat = neighbor_id
+            task.visited_sats.add(neighbor_id)
             self._forwarded_tasks.append((neighbor_id, task, b_nm))
             forward_info = (neighbor_id, task)
             self._remove_from_forward_queue(task)
