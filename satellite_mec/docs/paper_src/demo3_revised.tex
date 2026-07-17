@@ -292,11 +292,11 @@ $\mathcal{I}_n(t)$为时隙$t$内卫星$n$覆盖范围内的活跃用户集合�
 否则拒绝。
 准入阈值$\theta_n$由系统计算容量和任务到达率离线确定：
 \begin{equation}
-    \theta_n = 2\left(E_n
+    \theta_n = 2\left(B^{cap}_n
     + (2|\mathcal{N}_n|+1)\lambda_{\max}\right),
     \label{eq:theta}
 \end{equation}
-其中$E_n$（个）为卫星$n$每时隙最多分发到计算队列的任务数上限，
+其中$B^{cap}_n$（个）为卫星$n$的计算队列并发上限（同时驻留计算队列的任务并发数上界，见表~\ref{tab:notation}），
 $\lambda_{\max}$为单时隙最大任务到达数（个）。
 
 调度决策通过多智能体强化学习（MAPPO）实现，
@@ -685,7 +685,7 @@ $Q^B_n(t)$ & 计算队列总数据量（bits） \\
 $N^B_n(t)$ & 计算队列任务数（个） \\
 $\hat{N}^B_n$ & 时隙内临时计算队列任务数（个） \\
 $N^F_n(t)$ & 转发队列任务数（个） \\
-$\tilde{N}^F_n(t)$ & 扰动转发队列任务数，$N^F_n(t) - \theta_n$（个） \\
+$\tilde{Q}^F_m(t)$ & 邻居$m$扰动转发队列积压（bits），转发队列比特量相对参考容量的偏移 \\
 $\mathcal{L}^{new}_{\max}$ & 边际老化项经验归一化尺度，见式\eqref{eq:norm1} \\
 $\alpha^i_n(t)$ & 任务$i$在卫星$n$的本地处理决策（0或1） \\
 $\alpha_n(t)$ & 时隙$t$卫星$n$分发到计算队列的总数据量（bits） \\
@@ -700,6 +700,7 @@ $t^i_{finish}$ & 任务$i$完成计算并退出系统的时隙 \\
 $DoD_n(t), DoD_{\max}$ & 放电深度、风险状态投影上界/评估阈值（0.8） \\
 $\delta_n(t)$ & 时隙$t$净DoD增量（含基础/计算/传输/太阳能） \\
 $\delta_{\max,n}$ & 单时隙净DoD增量经验归一化尺度，见式\eqref{eq:delta_max} \\
+$\delta^{comp}_{\max}$ & 每任务满负荷计算名义DoD尺度（老化项归一化），见式\eqref{eq:norm1} \\
 $\xi_n(t)$ & 光照状态（1：光照区，0：地影区） \\
 $\tau^{switch}_n(t)$ & 距下次光照状态切换的剩余时隙数 \\
 $\rho^{sun}_n$ & 卫星$n$的光照占比，由轨道参数确定 \\
@@ -715,7 +716,7 @@ $P^Q_n(t)$ & 队列压力辅助项 \\
 $B^{cap}_n$ & 单星计算队列并发上限（个） \\
 $\kappa$ & 芯片能耗系数（J/cycle$^3$） \\
 $\theta_n$ & 准入控制任务数阈值（个） \\
-$E_n$ & 卫星$n$每时隙最多分发到计算队列的任务数上限（个） \\
+$d^{ub}_{\max}$ & 截止时间上界（本文取 $12$~s），用于紧迫度归一化 \\
 $B^{bits}_{\max}$ & 单条星间链路单时隙最大传输数据量（bits） \\
 $b_{\max}, b_{\min}$ & 星间链路传输速率上界、下界（bits/s） \\
 $\lambda_{\max}$ & 单时隙最大任务到达数（个） \\
@@ -826,7 +827,7 @@ a^i_n(t) = \begin{cases} 1, & N^F_n(t) \leq \theta_n \\ 0, & \text{否则} \end{
 
 \subsubsection{状态空间}
 
-每颗卫星$n$在对任务$i$做决策时的完整状态输入为：
+每颗卫星$n$在对任务$i$做决策时的状态向量由以下主要分量构成：
 
 \begin{equation}
 \begin{aligned}
@@ -850,6 +851,9 @@ d^i_{remain}(t)}_{\text{当前任务状态}}
 $\xi_n(t)$让智能体感知充放电状态；
 $\tau^{switch}_n(t)$让智能体预判充放电状态切换；
 邻居$m$的$DoD_m(t)$使智能体考虑星座级电池均衡。
+除上述主要分量外，实现中的状态还包含若干由其派生的工程特征
+（如上一时隙计算频率、归一化太阳能功率、DoD 余量，以及任务的松弛比与所需频率比等），
+并对邻居补充相应的计算队列与光照/切换信息；这些特征不改变状态的因果结构，此处从略。
 
 \subsubsection{动作空间}
 
@@ -891,7 +895,8 @@ r^{base,a}_n(i,t) = -\bar{c}^a_n(i,t),
 
 \begin{equation}
 \bar{c}^{local}_n(i,t) =
-\frac{1}{1+V}\cdot\frac{s^i(N^B_n(t) - \tilde{N}^F_n(t))}{s_{\max}\cdot\theta_n}
+\frac{1}{1+V}\cdot\frac{s^i(N^B_n(t) - N^F_n(t))}{s_{\max}\cdot\theta_n}
++ \frac{1}{1+V}\cdot\frac{s^i}{s_{\max}\cdot\theta_n}\Big(1-\frac{d^i_{remain}(t)}{d^{ub}_{\max}}\Big)
 + \frac{V}{1+V}\cdot\frac{\Delta\mathcal{L}^{i,comp}_n}{\mathcal{L}^{new}_{\max}}
 + \eta\cdot\frac{\hat{Z}_n\cdot\widehat{\Delta DoD}^{i,comp}_n}
 {Z_{\max}\cdot\Delta DoD_{\max}},
@@ -902,7 +907,8 @@ r^{base,a}_n(i,t) = -\bar{c}^a_n(i,t),
 
 \begin{equation}
 \bar{c}^{offload}_{nm}(i,t) =
-\frac{1}{1+V}\cdot\frac{s^i(\tilde{N}^F_m(t) - \tilde{N}^F_n(t))}{s_{\max}\cdot\theta_n}
+\frac{1}{1+V}\cdot\frac{s^i(N^F_m(t) - N^F_n(t))}{s_{\max}\cdot\theta_n}
++ \frac{1}{1+V}\cdot\frac{s^i}{s_{\max}\cdot\theta_n}\Big(1-\frac{d^i_{remain}(t)}{d^{ub}_{\max}}\Big)
 + \frac{V}{1+V}\cdot\frac{\Delta\mathcal{L}^{i,trans}_n}{\mathcal{L}^{new}_{\max}}
 + \eta\cdot\frac{\hat{Z}_n\cdot\widehat{\Delta DoD}^{i,trans}_{n\to m}}
 {Z_{\max}\cdot\Delta DoD_{\max}},
@@ -911,26 +917,34 @@ r^{base,a}_n(i,t) = -\bar{c}^a_n(i,t),
 
 其中$\eta > 0$为\emph{名义能源压力项}（$\hat{Z}_n\cdot\widehat{\Delta DoD}$）的惩罚系数；
 权重$\frac{1}{1+V}$和$\frac{V}{1+V}$为控制队列项与边际老化项相对尺度的经验塑形系数。
+式\eqref{eq:cost_local}\eqref{eq:cost_offload}的第二项为\emph{紧迫度}辅助项，
+随任务剩余时间$d^i_{remain}(t)$减小而增大（$d^{ub}_{\max}$为截止时间上界），
+对本地与转发动作对称施加，用于在临近截止时提升该任务的调度优先级；
+由于该项对两类动作相同，不改变本地与转发之间的相对偏好，仅调节其绝对量级。
+两式的队列差分项统一采用原始转发队列任务数$N^F$（本地为$N^B_n-N^F_n$、转发为$N^F_m-N^F_n$），
+在队列项上保持对称。
 
 各归一化系数定义如下：
 
 \begin{equation}
 \mathcal{L}^{new}_{\max} =
-\mathcal{L}'(DoD_{\max})\cdot\delta_{\max},
+\mathcal{L}'(DoD_{\max})\cdot\delta^{comp}_{\max},
 \quad
-\delta_{\max} = \frac{\kappa s_{\max} h_{\max} c^2_n}{E^{cap}_n},
+\delta^{comp}_{\max} = \frac{\kappa s_{\max} h_{\max} c^2_n}{E^{cap}_n},
 \label{eq:norm1}
 \end{equation}
 
 \begin{equation}
 \Delta DoD_{\max} = \delta_{\max,n},
 \quad
-Z_{\max} = T_{snapshot}\cdot\delta_{\max,n}。
+Z_{\max} = T_{orbit}\cdot\delta_{\max,n}。
 \label{eq:norm2}
 \end{equation}
 式\eqref{eq:norm1}\eqref{eq:norm2}中的$\mathcal{L}^{new}_{\max}$、$\Delta DoD_{\max}$、$Z_{\max}$
 均为奖励项的\emph{经验归一化尺度}（$Z_{\max}$ 取一个轨道周期内 $Z_n$ 的名义尺度
-$T_{snapshot}\delta_{\max,n}$，$Z_n$ 于每轨道周期起始复位），而非严格理论上界；
+$T_{orbit}\delta_{\max,n}$，$T_{orbit}$ 为一个轨道周期的时隙数，$Z_n$ 于每轨道周期起始复位），而非严格理论上界；
+需要区分：$\delta^{comp}_{\max}$（式\eqref{eq:norm1}，每任务满负荷计算的名义 DoD 尺度）
+与 $\delta_{\max,n}$（式\eqref{eq:delta_max}，单时隙净 DoD 增量尺度）为两个不同的量。
 由于$\delta_{\max,n}$未计入平台基础功率项，个别时隙的归一化值可能略超 $1$。
 
 为提升样本效率并稳定训练，在基础奖励上叠加 outcome-aware 辅助塑形项：
@@ -1026,6 +1040,8 @@ GAE优势估计：
 本文所提奖励为经验塑形设计：$R^{obj}$ 提供与长期电池--服务目标相对应的时隙级结果信号，
 $R^{prior}$ 利用队列差、DoD 边际老化和名义能源压力构造任务级稠密反馈。
 后者并非 P1 的严格漂移加惩罚分解，最大化复合奖励不保证获得 P1 的全局最优策略。
+此外，P1 以长期时间平均代价为优化目标，而 PPO/GAE 实际优化的是$\gamma=0.99$的折扣累计回报；
+折扣回报在此作为长期平均目标的可优化代理，二者并不严格等价。
 名义能源压力特征 $Z_n$ 仅为有限评估窗口内累计名义能源压力的经验状态特征
 （于每轨道周期起始复位），不承担长期能源约束或物理安全保证。
 所提方法的有效性主要通过第~\ref{sec:simulation}~节的经验对比与消融验证。
