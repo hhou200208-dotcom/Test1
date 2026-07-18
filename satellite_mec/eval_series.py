@@ -7,6 +7,7 @@ import json, time, numpy as np
 from core import Config, SatelliteMECEnv
 from baselines import LocalOnlyPolicy, GreedyDelayPolicy, LyapunovGreedyPolicy, MHSPOPolicy, GDCOPolicy
 from baselines.td3_sched import TD3SchedPolicy
+from baselines.maddpg_dod import MADDPGDoDPolicy
 from training import MAPPOPolicy
 
 class _C(Config):
@@ -44,6 +45,7 @@ env.reset(phase='train')
 for _ in range(cfg.T_WARMUP): env.step(policy=mh)
 cap(mh,'MHSPO')
 td3=TD3SchedPolicy(cfg,env); td3.load('checkpoints/TD3Sched_lh4_16K'); cap(td3,'TD3Sched')
+md=MADDPGDoDPolicy(cfg,env); md.load('checkpoints/MADDPG_DoD_lh4_32K'); cap(md,'MADDPG_DoD')
 nobat=MAPPOPolicy(cfg,name='MAPPO_NoBat'); nobat.load('checkpoints/MAPPO_NoBat_lh4_8K'); cap(nobat,'MAPPO_NoBat')
 lya=MAPPOPolicy(cfg,name='LyaMAPPO'); lya.load('checkpoints/LyaMAPPO_lh4_32K'); cap(lya,'LyaMAPPO')
 

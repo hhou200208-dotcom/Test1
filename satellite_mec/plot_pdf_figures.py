@@ -14,13 +14,13 @@ S    = json.load(open(os.path.join(os.path.dirname(__file__), 'docs', 'series_lh
 OUT  = os.path.join(os.path.dirname(__file__), 'docs', 'figures_paper')
 RATIO = 192 / 25
 
-ORDER = ['LyaMAPPO', 'TD3Sched', 'MHSPO', 'GDCO', 'LocalOnly']   # 对比实验：5 算法
+ORDER = ['LyaMAPPO', 'MADDPG_DoD', 'TD3Sched', 'MHSPO', 'GDCO', 'LocalOnly']   # 对比实验：6 算法（含 LyDRL-DoD）
 ORDER = [p for p in ORDER if p in S]
-DISP  = {'LocalOnly':'LSO', 'MAPPO_NoBat':'MAPPO-NoDOD'}
+DISP  = {'LocalOnly':'LSO', 'MAPPO_NoBat':'MAPPO-NoDOD', 'MADDPG_DoD':'LyDRL-DoD'}
 disp  = lambda p: DISP.get(p, p)
-COLOR = {'LyaMAPPO':'#d62728','TD3Sched':'#1f77b4','MHSPO':'#2ca02c','GDCO':'#9467bd',
+COLOR = {'LyaMAPPO':'#d62728','MADDPG_DoD':'#17becf','TD3Sched':'#1f77b4','MHSPO':'#2ca02c','GDCO':'#9467bd',
          'GreedyDelay':'#ff7f0e','LyapunovGreedy':'#8c564b','LocalOnly':'#7f7f7f'}
-MARK  = {'LyaMAPPO':'s','TD3Sched':'o','MHSPO':'^','GDCO':'P','GreedyDelay':'D',
+MARK  = {'LyaMAPPO':'s','MADDPG_DoD':'X','TD3Sched':'o','MHSPO':'^','GDCO':'P','GreedyDelay':'D',
          'LyapunovGreedy':'v','LocalOnly':'*'}
 
 def kde_fig(vals, xlabel, title, fname, note=None, smooth=2.2):

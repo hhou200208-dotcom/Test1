@@ -7,6 +7,7 @@ import json, time, sys, numpy as np
 from core import Config, SatelliteMECEnv
 from baselines import LocalOnlyPolicy, LyapunovGreedyPolicy, MHSPOPolicy, GDCOPolicy
 from baselines.td3_sched import TD3SchedPolicy
+from baselines.maddpg_dod import MADDPGDoDPolicy
 from training import MAPPOPolicy
 
 N_SEEDS = int(sys.argv[1]) if len(sys.argv) > 1 else 10
@@ -58,6 +59,7 @@ run(LyapunovGreedyPolicy(cfg, env), 'LyapunovGreedy')
 run(GDCOPolicy(cfg, env), 'GDCO')
 run(MHSPOPolicy(cfg, env, rho_d=1.0, rho_e=1.0, V_lyapunov=10.0), 'MHSPO', warmup=True)
 td3 = TD3SchedPolicy(cfg, env); td3.load('checkpoints/TD3Sched_lh4_16K'); run(td3, 'TD3Sched')
+md = MADDPGDoDPolicy(cfg, env); md.load('checkpoints/MADDPG_DoD_lh4_32K'); run(md, 'MADDPG_DoD')
 nb = MAPPOPolicy(cfg, name='MAPPO_NoBat'); nb.load('checkpoints/MAPPO_NoBat_lh4_8K'); run(nb, 'MAPPO_NoBat')
 ly = MAPPOPolicy(cfg, name='LyaMAPPO'); ly.load('checkpoints/LyaMAPPO_lh4_32K'); run(ly, 'LyaMAPPO')
 

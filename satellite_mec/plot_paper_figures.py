@@ -16,11 +16,11 @@ os.makedirs(OUT, exist_ok=True)
 S = json.load(open(DATA))
 RATIO = 192 / 25   # N=192 / N=25 scaling for extensive totals
 
-ORDER = ['LyaMAPPO', 'TD3Sched', 'MHSPO', 'GDCO', 'LocalOnly']   # 对比实验：5 算法
+ORDER = ['LyaMAPPO', 'MADDPG_DoD', 'TD3Sched', 'MHSPO', 'GDCO', 'LocalOnly']   # 对比实验：6 算法（含 LyDRL-DoD）
 ORDER = [p for p in ORDER if p in S]
-COLOR = {'LyaMAPPO':'#d62728','TD3Sched':'#1f77b4','MHSPO':'#2ca02c','GDCO':'#9467bd',
+COLOR = {'LyaMAPPO':'#d62728','MADDPG_DoD':'#17becf','TD3Sched':'#1f77b4','MHSPO':'#2ca02c','GDCO':'#9467bd',
          'GreedyDelay':'#ff7f0e','LyapunovGreedy':'#8c564b','LocalOnly':'#7f7f7f','MAPPO_NoBat':'#e377c2'}
-DISP  = {'LocalOnly':'LSO', 'MAPPO_NoBat':'MAPPO-NoDOD'}          # 显示名映射
+DISP  = {'LocalOnly':'LSO', 'MAPPO_NoBat':'MAPPO-NoDOD', 'MADDPG_DoD':'LyDRL-DoD'}   # 显示名映射
 disp  = lambda p: DISP.get(p, p)
 col = lambda p: COLOR.get(p, '#333')
 cum = lambda a: np.cumsum(np.asarray(a))
