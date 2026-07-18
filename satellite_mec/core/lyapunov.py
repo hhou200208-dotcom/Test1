@@ -73,13 +73,34 @@ class LyapunovCalculator:
         return (10 ** (a * (dod - 1))) * (1.0 + a * math.log(10) * dod)
 
     # ── DoD 增量估算 ──────────────────────────────────────────
-    def delta_dod_comp(self, task: "Task", nb_next: int) -> float:
-        """计算执行一个任务（并发数为 nb_next）产生的 DoD 增量。"""
+    def delta_dod_comp(self, task: "Task", sat_state: Dict) -> float:
+        """DVFS-aware 边际 DoD：接纳一个任务前后整星 slot 能耗的差分。
+
+        与"独占 f_max 上界"不同，这里调用 select_freq 计算 f_before / f_after：
+            f_before = sqrt(Q_hat / (3 V κ))  ∨ floor_hat
+            f_after  = sqrt((Q_hat + S·H) / (3 V κ))  ∨ max(floor_hat, new_floor)
+        然后 Δ E = κ · (f_after³ − f_before³) · τ。
+
+        sat_state 必须含 q_cycles_hat、f_floor_hat、nb_hat（由 Satellite 在
+        init_temp_state 与 apply_action 中维护）。
+        """
+        from core.dvfs import select_freq
         cfg = self.cfg
-        if nb_next <= 0:
-            return 0.0
-        energy = cfg.KAPPA * task.size * task.cpu_cycles * (cfg.CPU_FREQ ** 2) / (nb_next ** 2)
-        return energy / cfg.E_CAP
+
+        q_before     = float(sat_state.get('q_cycles_hat', 0.0))
+        floor_before = float(sat_state.get('f_floor_hat', 0.0))
+        nb_next      = int(sat_state.get('nb_hat', 0)) + 1
+
+        task_cycles    = task.size * task.cpu_cycles
+        q_after        = q_before + task_cycles
+        new_floor_task = nb_next * task_cycles / max(task.deadline, cfg.TAU)
+        floor_after    = max(floor_before, new_floor_task)
+
+        f_before = select_freq(cfg, q_before, f_floor=floor_before)
+        f_after  = select_freq(cfg, q_after,  f_floor=floor_after)
+
+        delta_e = cfg.KAPPA * cfg.TAU * max(f_after ** 3 - f_before ** 3, 0.0)
+        return delta_e / cfg.E_CAP
 
     def delta_dod_trans(self, task: "Task", b_nm: float) -> float:
         """转发一个任务（链路速率 b_nm）产生的 DoD 增量。"""
@@ -88,9 +109,9 @@ class LyapunovCalculator:
             return 0.0
         return cfg.P_T * (task.size / b_nm) / cfg.E_CAP
 
-    def delta_health_loss_comp(self, task: "Task", nb_next: int, dod: float) -> float:
+    def delta_health_loss_comp(self, task: "Task", sat_state: Dict, dod: float) -> float:
         """计算任务引起的健康损失增量（计算部分）。"""
-        return self.health_loss_deriv(dod) * self.delta_dod_comp(task, nb_next)
+        return self.health_loss_deriv(dod) * self.delta_dod_comp(task, sat_state)
 
     def delta_health_loss_trans(self, task: "Task", b_nm: float, dod: float) -> float:
         """计算任务引起的健康损失增量（传输部分）。"""
@@ -116,18 +137,22 @@ class LyapunovCalculator:
         cfg = self.cfg
         dod = sat_state['dod']; n_f = sat_state['n_f']
         nb_hat = sat_state['nb_hat']; z_hat = sat_state['z_hat']
-        tilde_N_F = n_f - cfg.THETA_NUM
+        # Lyapunov drift（本地）：forward 队列 -1、compute 队列 +1
+        #   ⇒ drift contribution ∝ (Q_compute - Q_forward) = (nb_hat - n_f)
+        # 原 (nb_hat - n_f + THETA_NUM) 引入了未抵消的常数偏置，
+        # 使 local cost 永远比 forward 大 ~base_queue·THETA_NUM，
+        # 导致 LyapunovGreedy/MHSPO 过度转发。
         remain = max(task.remain_time(current_slot), 1e-3)
         urgency = 1.0 - remain / cfg.D_MAX_MAX
         base_queue = task.size / (cfg.Q_NORM + 1e-9) / (1 + cfg.V)
-        queue_item = base_queue * (nb_hat - tilde_N_F) + base_queue * urgency
+        queue_item = base_queue * (nb_hat - n_f) + base_queue * urgency
         loss_item = 0.0
         if self.use_battery_loss:
-            delta_l = self.delta_health_loss_comp(task, nb_next, dod)
+            delta_l = self.delta_health_loss_comp(task, sat_state, dod)
             loss_item = (cfg.V / (1 + cfg.V)) * delta_l / (cfg.L_MAX_NEW_RAW + 1e-9)
         dod_item = 0.0
         if self.use_dod_penalty:
-            delta_dod = self.delta_dod_comp(task, nb_next)
+            delta_dod = self.delta_dod_comp(task, sat_state)
             dod_item = cfg.ETA * z_hat * delta_dod / (cfg.Z_MAX * cfg.DELTA_DOD_MAX + 1e-9)
         return queue_item + loss_item + dod_item
 
@@ -152,12 +177,14 @@ class LyapunovCalculator:
         cfg = self.cfg
         dod = sat_state['dod']; n_f_n = sat_state['n_f']
         n_f_m = neighbor_state.get('n_f', 0); z_hat = sat_state['z_hat']
-        tilde_N_F_n = n_f_n - cfg.THETA_NUM
-        tilde_N_F_m = n_f_m - cfg.THETA_NUM
+        # Lyapunov drift（转发）：我 forward 队列 -1、邻居 forward 队列 +1
+        #   ⇒ drift contribution ∝ (n_f_m - n_f_n)
+        # 注：原 (tilde_N_F_m - tilde_N_F_n) 中 THETA_NUM 已自然抵消，等价于
+        # (n_f_m - n_f_n)，这里改成直观写法、与 normalized_local_cost 对称。
         remain = max(task.remain_time(current_slot), 1e-3)
         urgency = 1.0 - remain / cfg.D_MAX_MAX
         base_queue = task.size / (cfg.Q_NORM + 1e-9) / (1 + cfg.V)
-        queue_item = base_queue * (tilde_N_F_m - tilde_N_F_n) + base_queue * urgency
+        queue_item = base_queue * (n_f_m - n_f_n) + base_queue * urgency
         loss_item = 0.0
         if self.use_battery_loss:
             delta_l = self.delta_health_loss_trans(task, b_nm, dod)
@@ -170,13 +197,19 @@ class LyapunovCalculator:
 
     # ── 状态提取辅助 ──────────────────────────────────────────
     def get_sat_state(self, satellite: "Satellite") -> Dict:
-        """从卫星对象提取用于代价计算的状态字典。"""
+        """从卫星对象提取用于代价计算的状态字典。
+
+        q_cycles_hat / f_floor_hat 是本时隙累积的 DVFS 输入估计（含本时隙
+        已接纳的新任务），用于 delta_dod_comp 做差分。
+        """
         return {
-            'dod':     satellite.dod,
-            'n_f':     len(satellite.forward_queue),
-            'qf_size': satellite.qf_size,
-            'nb_hat':  satellite.nb_hat,
-            'z_hat':   satellite.z_hat,
+            'dod':          satellite.dod,
+            'n_f':          len(satellite.forward_queue),
+            'qf_size':      satellite.qf_size,
+            'nb_hat':       satellite.nb_hat,
+            'z_hat':        satellite.z_hat,
+            'q_cycles_hat': satellite.q_cycles_hat,
+            'f_floor_hat':  satellite.f_floor_hat,
         }
 
     def get_neighbor_state(self, neighbor_info: Dict) -> Dict:
@@ -186,12 +219,12 @@ class LyapunovCalculator:
             'n_f':     neighbor_info.get('n_f', 0),
         }
 
-    def compute_update_delta_dod_comp_timeslot(self, nb: int) -> float:
-        """单时隙计算功耗产生的 DoD 增量（全速 CPU_FREQ，nb 个并发任务）。"""
+    def compute_update_delta_dod_comp_timeslot(self, f_cmp: float) -> float:
+        """单时隙计算功耗产生的 DoD 增量（Li-style DVFS：P=κf³, E=Pτ）。"""
         cfg = self.cfg
-        if nb <= 0:
+        if f_cmp <= 0:
             return 0.0
-        return cfg.TAU * cfg.KAPPA * (cfg.CPU_FREQ ** 3) / (cfg.E_CAP * (nb ** 2))
+        return cfg.TAU * cfg.KAPPA * (f_cmp ** 3) / cfg.E_CAP
 
     def compute_update_delta_dod_trans_timeslot(
         self, forwarded_tasks: List[Tuple]

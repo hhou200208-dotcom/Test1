@@ -197,6 +197,10 @@ class ExperimentRunner:
                                           plot_health_loss_comparison,
                                           plot_queue_comparison,
                                           plot_completion_rate_bar,
+                                          plot_delay_pdf,
+                                          plot_satisfaction_pdf,
+                                          plot_metric_per_run,
+                                          _collect_baseline_curves,
                                           generate_comparison_table)
         comparison_dir = os.path.join(self.base_dir, 'comparison')
         fig_dir        = os.path.join(comparison_dir, 'figures')
@@ -204,6 +208,21 @@ class ExperimentRunner:
         plot_dod_comparison(self.result_dirs, fig_dir)
         plot_health_loss_comparison(self.result_dirs, fig_dir)
         plot_queue_comparison(self.result_dirs, fig_dir)
+
+        # 时延分布、满意度分布、完成率/满意度时序曲线
+        curves = _collect_baseline_curves(self.recorders, phase='eval')
+        curves_by_run = [curves]
+        plot_delay_pdf(curves_by_run, fig_dir)
+        plot_satisfaction_pdf(curves_by_run, fig_dir,
+                              sample_key='satisfaction_samples_a',
+                              filename='satisfaction_pdf')
+        plot_metric_per_run(curves_by_run, 'completion_rate',
+                            'Completion Rate', 'Task Completion Rate',
+                            fig_dir, 'completion_rate')
+        plot_metric_per_run(curves_by_run, 'slot_satisfaction_rate',
+                            'Satisfaction Rate', 'Slot Satisfaction Rate',
+                            fig_dir, 'satisfaction_rate')
+
         summaries = {a: self.recorders[a].get_summary()
                      for a in self.recorders if self.recorders[a].get_summary()}
         if summaries:

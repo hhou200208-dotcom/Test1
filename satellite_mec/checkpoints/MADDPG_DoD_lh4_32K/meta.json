@@ -1,0 +1,8 @@
+{
+  "t_train": 32000,
+  "lambda_high": 4.0,
+  "best_step": 2000,
+  "best_cr": 0.8282470634519193,
+  "best_dod": 0.43592686861167385,
+  "select": "max-CR (fair-footing competitive baseline)"
+}

@@ -212,7 +212,8 @@ class TaskRecord:
     action:   int
     log_prob: float
     mask:     np.ndarray
-    advantage:float = 0.0
+    advantage:   float = 0.0
+    task_reward: float = 0.0   # Stage 6：任务级即时奖励（apply_action 返回）
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -264,17 +265,19 @@ class RolloutBuffer:
 
     def add_task(
         self,
-        sat_id:   int,
-        slot_t:   int,
-        state:    np.ndarray,
-        action:   int,
-        log_prob: float,
-        mask:     np.ndarray,
+        sat_id:      int,
+        slot_t:      int,
+        state:       np.ndarray,
+        action:      int,
+        log_prob:    float,
+        mask:        np.ndarray,
+        task_reward: float = 0.0,
     ) -> None:
         self._task_records.append(TaskRecord(
             sat_id=sat_id, slot_t=slot_t,
             state=state.copy(), action=action,
             log_prob=log_prob, mask=mask.copy(),
+            task_reward=task_reward,
         ))
 
     def compute_gae(
@@ -311,11 +314,23 @@ class RolloutBuffer:
                 r.target_return = gae + r.value
                 next_value = r.value
 
-        # 将 slot advantage 传播给同 slot 的 task records
+        # Stage 6：per-task advantage = slot_advantage + β · (task_r − slot_mean_task_r)
+        # 同一 (sat, slot) 内任务 task_reward 的相对偏差给出局部信用
+        beta_task = self.cfg.BETA_TASK
+        # 按 (sat, slot) 分组算平均 task_reward
+        tasks_by_slot: Dict[Tuple[int, int], List[TaskRecord]] = {}
         for tr in self._task_records:
-            sr = self._slot_index.get((tr.sat_id, tr.slot_t))
-            if sr:
-                tr.advantage = sr.advantage
+            tasks_by_slot.setdefault((tr.sat_id, tr.slot_t), []).append(tr)
+        for (sat_id, slot_t), trs in tasks_by_slot.items():
+            sr = self._slot_index.get((sat_id, slot_t))
+            slot_adv = sr.advantage if sr else 0.0
+            rewards = np.array([t.task_reward for t in trs], dtype=np.float32)
+            mean_r = float(rewards.mean()) if len(rewards) > 0 else 0.0
+            std_r  = float(rewards.std())  if len(rewards) > 1 else 1.0
+            std_r  = max(std_r, 1e-6)
+            for t in trs:
+                local = (t.task_reward - mean_r) / std_r
+                t.advantage = slot_adv + beta_task * local
 
         self._normalize_advantages()
 

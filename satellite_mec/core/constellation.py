@@ -247,6 +247,7 @@ class Constellation:
         qf_sizes = np.array([sat.qf_size for sat in self.satellites])
         qb_sizes = np.array([sat.qb_size for sat in self.satellites])
         zs       = np.array([sat.z       for sat in self.satellites])
+        freqs    = np.array([sat.last_cpu_freq for sat in self.satellites])
         stats    = {
             'avg_dod':     float(np.mean(dods)),
             'max_dod':     float(np.max(dods)),
@@ -255,6 +256,51 @@ class Constellation:
             'avg_qb_size': float(np.mean(qb_sizes)),
             'avg_z':       float(np.mean(zs)),
             'max_z':       float(np.max(zs)),
+            'avg_cpu_freq': float(np.mean(freqs)),
+            'max_cpu_freq': float(np.max(freqs)),
         }
+        # 系统总能耗（J/槽）：所有卫星计算+传输能耗求和（星务常量项不计，便于策略对比）
+        comp_e  = sum(sat.slot_comp_energy  for sat in self.satellites)
+        trans_e = sum(sat.slot_trans_energy for sat in self.satellites)
+        stats['slot_system_energy']       = float(comp_e + trans_e)
+        stats['slot_system_energy_comp']  = float(comp_e)
+        stats['slot_system_energy_trans'] = float(trans_e)
+        # 队列积压（任务个数，per-sat 平均；与字节口径 avg_qf/qb_size 对应的"个数版"）
+        n_fwd = sum(len(sat.forward_queue) for sat in self.satellites)
+        n_cmp = sum(len(sat.compute_queue) for sat in self.satellites)
+        stats['avg_queue_tasks']   = float((n_fwd + n_cmp) / self.cfg.N_SATS)
+        stats['avg_qf_tasks']      = float(n_fwd / self.cfg.N_SATS)
+        stats['avg_qb_tasks']      = float(n_cmp / self.cfg.N_SATS)
         stats.update(self.get_health_stats())
         return stats
+
+    def get_global_summary(self, current_slot: int) -> np.ndarray:
+        """全局摘要 (10 维，星座大小无关)，供方案 B 的 critic 使用。
+
+        Layout (全部 ∈ [0, 1] 已归一化):
+            [mean_dod, std_dod, max_dod,
+             mean_qf, mean_qb,
+             mean_HL_per_slot, mean_cpu_freq, mean_solar,
+             mean_xi, slot_phase]
+        """
+        cfg  = self.cfg
+        sats = self.satellites
+        dods   = np.array([s.dod          for s in sats])
+        qfs    = np.array([s.qf_size      for s in sats])
+        qbs    = np.array([s.qb_size      for s in sats])
+        hls    = np.array([s.slot_health_loss for s in sats])
+        freqs  = np.array([s.last_cpu_freq for s in sats])
+        solars = np.array([s.solar_power  for s in sats])
+        xis    = np.array([s.xi           for s in sats], dtype=np.float32)
+        return np.array([
+            float(np.mean(dods))   / cfg.DOD_MAX,
+            float(np.std(dods))    / cfg.DOD_MAX,
+            float(np.max(dods))    / cfg.DOD_MAX,
+            float(np.mean(qfs))    / (cfg.Q_F_MAX + 1e-9),
+            float(np.mean(qbs))    / (cfg.Q_F_MAX + 1e-9),
+            float(np.mean(hls))    / max(cfg.HL_NORM, 1e-12),
+            float(np.mean(freqs))  / max(cfg.CPU_FREQ, 1.0),
+            float(np.mean(solars)) / max(cfg.P_SOLAR_MAX, 1e-6),
+            float(np.mean(xis)),
+            (current_slot % cfg.ORBIT_PERIOD) / max(cfg.ORBIT_PERIOD, 1),
+        ], dtype=np.float32)

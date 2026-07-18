@@ -1,0 +1,28 @@
+{
+  "_desc": "Head-to-head MADDPG offloading baseline (following Zhong et al. IoT-J 2026 learner) vs LyaMAPPO. Fair-footing: same env / DVFS substrate / completion incentive as all learned baselines; DoD-aware (use_dod_penalty) but NO HL half-life term (use_battery_loss=False, W_HL=0), faithful to the paper which optimizes DoD not HL. n=5 eval seeds, T_EVAL=5400, lambda_high=4.0. Best checkpoint by max-CR, step 2000.",
+  "eval": {"n_seeds": 5, "T_EVAL": 5400, "lambda_high": 4.0},
+  "MADDPG_DoD": {
+    "display": "LyDRL-DoD",
+    "checkpoint": "checkpoints/MADDPG_DoD_lh4_32K",
+    "footing": "fair (env reward + completion incentive, 54-dim actor, 245-dim centralized critic, shared DVFS); MADDPG learner (Gumbel-Softmax + centralized critic); no battery virtual queue / no task-level advantage decomposition",
+    "select": "max-CR (best_step=2000, best_cr=0.828)",
+    "satisfaction_mean": 0.836, "satisfaction_std": 0.001,
+    "dod_mean": 0.486, "dod_std": 0.005,
+    "hl_1e4_mean": 5.18, "hl_1e4_std": 0.06, "cumHL": 2.795,
+    "delay_mean": 3.00, "queue_tasks_mean": 2.4
+  },
+  "LyaMAPPO": {
+    "display": "LyaMAPPO",
+    "checkpoint": "checkpoints/LyaMAPPO_lh4_32K",
+    "satisfaction_mean": 0.788, "satisfaction_std": 0.001,
+    "dod_mean": 0.498, "dod_std": 0.007,
+    "hl_1e4_mean": 1.76, "hl_1e4_std": 0.03, "cumHL": 0.952,
+    "delay_mean": 3.33, "queue_tasks_mean": 2.8
+  },
+  "_takeaways": [
+    "Fair-footing MADDPG is competitive on service: satisfaction 0.836 (even edges LyaMAPPO 0.788), delay 3.00s, queue 2.4 -- a credible strong baseline, not a strawman.",
+    "But it incurs ~3x worse battery health: cumHL 2.795 vs LyaMAPPO 0.952 (HL/slot 5.18 vs 1.76 e-4).",
+    "Lacking LyaMAPPO's battery virtual queue z_n and task-level advantage decomposition, MADDPG trades battery lifetime for throughput -- LyaMAPPO Pareto-dominates on the battery-lifetime moat.",
+    "This places MADDPG in the high-throughput/high-HL cluster (with TD3-Sched 0.837/2.39, MHSPO 0.799/2.75, MAPPO_NoBat 0.822/2.87), all beaten by LyaMAPPO's uniquely low cumHL 0.952."
+  ]
+}

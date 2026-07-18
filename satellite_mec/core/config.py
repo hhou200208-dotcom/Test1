@@ -39,21 +39,21 @@ class Config:
     T_TOTAL: int = T_TRAIN + T_WARMUP + T_EVAL
 
     # ── 任务参数 ──────────────────────────────────────────────
-    LAMBDA_HIGH: float = 3.0                          # 高负载卫星到达率（tasks/slot）
+    LAMBDA_HIGH: float = 2.5                          # 高负载卫星到达率（tasks/slot）
     LAMBDA_LOW: float = 0.1                             # 低负载卫星到达率
-    LAMBDA_HIGH_RATIO: float = 1 / 3
+    LAMBDA_HIGH_RATIO: float = 1 / 5
     LAMBDA: float = LAMBDA_HIGH * LAMBDA_HIGH_RATIO + LAMBDA_LOW * (1 - LAMBDA_HIGH_RATIO)
     S_MIN: float = 10e6                                 # bits
     S_MAX: float = 50e6                                 # bits
     S_AVG: float = (S_MIN + S_MAX) / 2
-    H_MIN: float = 100.0                                # cycles/bit
-    H_MAX: float = 300.0
+    H_MIN: float = 10.0                                 # cycles/bit (Li et al. TSC 2024, κ_Li=0.1 bit/cycle)
+    H_MAX: float = 30.0                                 # cycles/bit (上沿留出 3× 异质性)
     D_MAX_MIN: float = 1.0                              # s，最小截止时间
     D_MAX_MAX: float = 12.0                             # s，最大截止时间
     K_MAX: int = 3                                      # 最大转发跳数
 
     # ── 计算参数 ──────────────────────────────────────────────
-    CPU_FREQ: float = 2e9                               # cycles/s
+    CPU_FREQ: float = 2e9                               # cycles/s（DVFS 上限 F_CMP_MAX，Zhang TMC 2023）
     MAX_DISPATCH: int = 6                               # 卫星最大并发任务数
     KAPPA: float = 1e-26                                # 能耗系数
 
@@ -66,6 +66,9 @@ class Config:
     # ── 电池参数 ──────────────────────────────────────────────
     E_CAP: float = 10 * 3600                            # J，电池容量
     P_SOLAR_MAX: float = 30.0                           # W，最大太阳能功率
+    P_HOUSEKEEPING: float = 5.0                         # W，维持卫星运行的基础功耗
+                                                        # （姿控/OBC/热控等子系统，参考 NASA SOA 2020
+                                                        #  及 Li et al. IEEE TSC 2024 式(4) 中 E_a(t) 项）
     DOD_MAX: float = 0.8
     DOD_MIN: float = 0.1
     DOD_INIT_LOW: float = 0.2                           # DoD初始值下界
@@ -77,17 +80,29 @@ class Config:
     ETA: float = 0.5                                    # DoD虚拟队列权重
     MU: float = 0.1                                     # 滑动平均系数
     ALPHA_BAR_INIT: float = MAX_DISPATCH / 2.0
+    COMPLETION_BONUS: float = 1.0                       # 任务完成奖励（直接激励CR）
+
+    # ── Outcome-aware reward 权重（MAPPO 训练用，对 baseline 透明） ──
+    # 上一组 (W_DONE=1, W_HL=30) HL 推太狠 → CR 卡 38%。重新平衡偏向 CR。
+    W_DONE:    float = 5.0                              # 每完成 1 个任务的奖励
+    W_TIMEOUT: float = 3.0                              # 每超时 1 个任务的惩罚
+    W_REJECT:  float = 3.0                              # 每拒收 1 个任务的惩罚
+    W_HL:      float = 10.0                             # 健康损失惩罚权重
+    W_QUEUE:   float = 0.05                             # 队列压力惩罚权重
+    HL_NORM:   float = 1e-4                             # HL 归一化（典型 slot 量级）
+    QUEUE_NORM: float = 0.0                             # 队列归一化（运行时填充为 Q_F_MAX）
 
     # ── MAPPO 参数 ────────────────────────────────────────────
     GAMMA: float = 0.99
-    LAMBDA_GAE: float = 0.9
+    LAMBDA_GAE: float = 0.95                            # GAE 长视野（HL 是累积量）
     EPSILON: float = 0.2                                # PPO clip ratio
-    BETA: float = 0.01                                  # 熵正则系数
-    LR_ACTOR: float = 3e-4
+    BETA: float = 0.15                                  # 熵正则系数（防止早期收敛，改善DoD探索）
+    LR_ACTOR: float = 1e-4
     LR_CRITIC: float = 1e-3
     MINIBATCH: int = 64
-    EPOCH: int = 4
+    EPOCH: int = 2
     K_ROLLOUT: int = 64                                 # rollout步长
+    BETA_TASK: float = 0.5                              # 任务级优势分解系数 A_task=A_slot+β·(r−r̄)/σ（定稿值）
 
     # ── 实验控制 ──────────────────────────────────────────────
     EVAL_INTERVAL: int = 15                             # 每隔多少次update做一次快速评估
@@ -114,6 +129,11 @@ class Config:
         self.B_BITS_MAX: float = self.B_MAX * self.TAU
         self.THETA: float = 2.0 * (self.S_MAX * self.MAX_DISPATCH
                                    + self.N_NEIGHBORS * self.B_BITS_MAX)
+        # DVFS（Li-style）校准：让 f_cmp = F_CMP_MAX 在"满队列"工况下成立。
+        # 满队列 Q_max = MAX_DISPATCH·S_MAX·H_MAX cycles
+        # 由 f* = sqrt(Q/(3 V κ)) 反解 V_DVFS = Q_max / (3 · F_CMP_MAX^2 · κ)
+        q_max_cycles = self.MAX_DISPATCH * self.S_MAX * self.H_MAX
+        self.V_DVFS: float = q_max_cycles / (3.0 * (self.CPU_FREQ ** 2) * self.KAPPA)
         comp_term = self.TAU * self.KAPPA * (self.CPU_FREQ ** 3)
         trans_term = self.P_T * self.N_NEIGHBORS * self.S_MAX / self.B_MIN
         self.DELTA_MAX: float = (comp_term + trans_term) / self.E_CAP
@@ -151,19 +171,37 @@ class Config:
         self.L_MAX_NEW_RAW: float = l_prime_max * delta_dod_max_comp
         self.Q_NORM: float = self.S_MAX * self.THETA_NUM
 
+        # QUEUE_NORM 默认 Q_F_MAX，保留 0.0 时按 Q_F_MAX 兜底
+        if self.QUEUE_NORM <= 0.0:
+            self.QUEUE_NORM = self.Q_F_MAX
         print(f"[Config] LAMBDA_MAX={self.LAMBDA_MAX:.0f}, "
               f"THETA_NUM={self.THETA_NUM:.0f}, "
               f"L_MAX_NEW_RAW={self.L_MAX_NEW_RAW:.4e}, "
-              f"Q_NORM={self.Q_NORM:.4e}")
+              f"Q_NORM={self.Q_NORM:.4e}, V_DVFS={self.V_DVFS:.4e}")
 
     # ── 维度查询 ──────────────────────────────────────────────
     def get_state_dim(self) -> int:
-        """Actor 输入维度：1(id) + 6(local) + N_nbr*5(neighbor) + 5(task) = 32"""
-        return 1 + 6 + self.N_NEIGHBORS * 5 + 5
+        """Actor 输入维度：1(id) + 10(local) + N_nbr*9(neighbor) + 7(task) = 54
+
+        local (10): qf, qb, nb_hat, dod, z_hat, xi, tau_switch,
+                    last_cpu_freq, solar_norm, dod_headroom
+        neighbor (9): link_rate, prop_delay, qf, qb, nb, dod, xi,
+                      tau_switch, last_cpu_freq
+        task (7): size, cycles, hops, trans_delay, remain,
+                  slack_ratio, cycle_rate_need
+        """
+        return 1 + 10 + self.N_NEIGHBORS * 9 + 7
+
+    # 全局摘要（方案 B）维度：与星座大小 N 无关，可扩展到任意 N_SATS
+    GLOBAL_SUMMARY_DIM: int = 10
 
     def get_critic_state_dim(self) -> int:
-        """Critic 输入维度：(state_dim - 5) * (1 + N_nbr) = 135"""
-        return (self.get_state_dim() - 5) * (1 + self.N_NEIGHBORS)
+        """Critic 输入维度（方案 B 局部+全局摘要）：
+        (state_dim − task_dim) × (1 + N_nbr) + GLOBAL_SUMMARY_DIM
+        = 47×5 + 10 = 245
+        """
+        return ((self.get_state_dim() - 7) * (1 + self.N_NEIGHBORS)
+                + self.GLOBAL_SUMMARY_DIM)
 
     def get_action_dim(self) -> int:
         """动作空间大小：1(本地) + N_neighbors(转发) = 5"""
@@ -192,12 +230,19 @@ class Config:
 
     # ── 内部校验 ──────────────────────────────────────────────
     def _verify_power_balance(self):
-        avg_nb = max(self.MAX_DISPATCH / 2, 1)
-        avg_comp_power = self.KAPPA * (self.CPU_FREQ ** 3) / (avg_nb ** 2)
+        # DVFS（Li-style）下 f_cmp 自适应队列。
+        # 取 q_avg ≈ avg_nb · S_AVG · H_AVG 估算平均频率与功率。
+        avg_nb   = max(self.MAX_DISPATCH / 2, 1)
+        h_avg    = 0.5 * (self.H_MIN + self.H_MAX)
+        q_avg    = avg_nb * self.S_AVG * h_avg
+        f_avg    = min(math.sqrt(q_avg / (3.0 * self.V_DVFS * self.KAPPA)),
+                       self.CPU_FREQ)
+        avg_comp_power = self.KAPPA * (f_avg ** 3)
         avg_trans_power = self.P_T * self.LAMBDA * self.S_AVG / self.B_AVG
         avg_solar_power = self.P_SOLAR_MAX * self.LIGHT_RATIO
-        total = avg_comp_power + avg_trans_power
-        print(f"[Config] 假设1验证（功耗/充电比={total/avg_solar_power:.6f}）:",
+        total = avg_comp_power + avg_trans_power + self.P_HOUSEKEEPING
+        print(f"[Config] 假设1验证（DVFS f_avg={f_avg/1e9:.3f} GHz，"
+              f"功耗/充电比={total/avg_solar_power:.6f}）:",
               "✓" if total <= avg_solar_power else "⚠ 不满足")
 
     def _verify_resource_surplus(self):

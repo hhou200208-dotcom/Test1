@@ -27,11 +27,11 @@ class LocalOnlyPolicy(PolicyInterface):
 
     逻辑
     ----
-    - 若本地计算在截止时间内可完成 → 动作0（本地）
-    - 否则尝试转发给第一个可行邻居
-    - 均不可行 → 强制动作0
+    严格本地处理：所有任务一律选动作0（本地计算），即使本地不可行。
+    对应参考论文 (Zhang et al., TMC 2024) 中的 LSO：
+        "For each task, the access satellite will process it locally."
 
-    注意：nb_hat_sim 在循环内滚动累加，使后续任务的可行性估算更准确。
+    本地不可行时任务排队等待，超过 deadline 由环境标记为 timeout。
     """
 
     needs_training: bool = False
@@ -42,30 +42,10 @@ class LocalOnlyPolicy(PolicyInterface):
         self.env = env
 
     def get_actions(self, obs, masks) -> Dict[int, List[int]]:
-        cfg     = self.cfg
         actions = {}
         sats    = self.env.constellation.satellites
-
         for sat in sats:
-            n         = sat.sat_id
-            sat_masks = masks.get(n, [])
-            sat_actions: List[int] = []
-            nb_hat_sim = sat.nb_hat
-
-            for task, mask in zip(sat.forward_queue, sat_masks):
-                local_feasible = (
-                    mask[0] > 0 and
-                    task.feasible_local(nb_hat_sim, cfg.CPU_FREQ, cfg.TAU,
-                                        self.env.current_slot)
-                )
-                if local_feasible:
-                    sat_actions.append(0)
-                    nb_hat_sim += 1
-                else:
-                    fwd = [i for i in range(1, len(mask)) if mask[i] > 0]
-                    sat_actions.append(fwd[0] if fwd else 0)
-
-            actions[n] = sat_actions
+            actions[sat.sat_id] = [0] * len(sat.forward_queue)
         return actions
 
 
@@ -126,7 +106,7 @@ class GreedyDelayPolicy(PolicyInterface):
     @staticmethod
     def _est_comp_time(task, nb: int, cpu_freq: float, tau: float) -> float:
         nb = max(nb, 0)
-        slots = math.ceil(task.size * task.cpu_cycles * (nb + 1) / (cpu_freq * tau))
+        slots = math.ceil(task.size * task.cpu_cycles / (cpu_freq * tau))
         return slots * tau
 
 
@@ -188,9 +168,15 @@ class LyapunovGreedyPolicy(PolicyInterface):
 
                 # 同步更新 sat 的临时状态（与 apply_action 保持一致）
                 if best_action == 0:
+                    pre_state = self.lyapunov_calc.get_sat_state(sat)
+                    delta_dod_local = self.lyapunov_calc.delta_dod_comp(task, pre_state)
                     sat.nb_hat    += 1
-                    sat.z_hat     += self.lyapunov_calc.delta_dod_comp(task, sat.nb_hat)
+                    sat.z_hat     += delta_dod_local
                     sat.alpha_num += 1
+                    task_cycles = task.size * task.cpu_cycles
+                    sat.q_cycles_hat += task_cycles
+                    new_floor_task = sat.nb_hat * task_cycles / max(task.deadline, self.cfg.TAU)
+                    sat.f_floor_hat  = max(sat.f_floor_hat, new_floor_task)
                 else:
                     neighbor_id = sat.neighbors[best_action - 1]
                     b_nm = sat.link_rates[neighbor_id]
