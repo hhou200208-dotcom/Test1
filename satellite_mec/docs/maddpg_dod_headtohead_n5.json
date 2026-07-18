@@ -1,0 +1,27 @@
+{
+  "_desc": "Head-to-head LyDRL-DoD (faithful MADDPG repro of Zhong et al. IoT-J 2026) vs LyaMAPPO. n=5 eval seeds, T_EVAL=5400, lambda_high=4.0. MADDPG best checkpoint (min-DoD s.t. CR>=0.32, step 4000).",
+  "eval": {"n_seeds": 5, "T_EVAL": 5400, "lambda_high": 4.0},
+  "MADDPG_DoD": {
+    "display": "LyDRL-DoD",
+    "checkpoint": "checkpoints/MADDPG_DoD_lh4_32K",
+    "select": "min-DoD s.t. CR>=0.32 (best_step=4000, best_dod=0.3886, best_cr=0.413)",
+    "satisfaction_mean": 0.417, "satisfaction_std": 0.004,
+    "dod_mean": 0.413, "dod_std": 0.011,
+    "hl_1e4_mean": 3.52, "hl_1e4_std": 0.04, "cumHL": 1.903,
+    "delay_mean": 6.05, "queue_tasks_mean": 4.9
+  },
+  "LyaMAPPO": {
+    "display": "LyaMAPPO",
+    "checkpoint": "checkpoints/LyaMAPPO_lh4_32K",
+    "satisfaction_mean": 0.788, "satisfaction_std": 0.001,
+    "dod_mean": 0.498, "dod_std": 0.007,
+    "hl_1e4_mean": 1.76, "hl_1e4_std": 0.03, "cumHL": 0.952,
+    "delay_mean": 3.33, "queue_tasks_mean": 2.8
+  },
+  "_takeaways": [
+    "LyDRL-DoD achieves its objective: DoD 0.413 < LyaMAPPO 0.498 (a genuine, well-tuned DoD minimizer).",
+    "LyaMAPPO Pareto-dominates on everything that matters: satisfaction +89%, HL -50%, delay -45%, queue -43%.",
+    "Key paradox: LyDRL-DoD reaches LOWER DoD but 2x WORSE cumulative HL -> minimizing instantaneous DoD is a flawed proxy for battery lifetime; LyaMAPPO's HL-aware outcome-augmented design wins the real metric.",
+    "MADDPG (off-policy) showed pronounced regime instability during training (quick-eval CR swung 0.38<->0.79) vs MAPPO's stable convergence -- supporting the on-policy choice."
+  ]
+}
