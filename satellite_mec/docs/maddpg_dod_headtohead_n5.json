@@ -1,14 +1,15 @@
 {
-  "_desc": "Head-to-head LyDRL-DoD (faithful MADDPG repro of Zhong et al. IoT-J 2026) vs LyaMAPPO. n=5 eval seeds, T_EVAL=5400, lambda_high=4.0. MADDPG best checkpoint (min-DoD s.t. CR>=0.32, step 4000).",
+  "_desc": "Head-to-head MADDPG offloading baseline (following Zhong et al. IoT-J 2026 learner) vs LyaMAPPO. Fair-footing: same env / DVFS substrate / completion incentive as all learned baselines; DoD-aware (use_dod_penalty) but NO HL half-life term (use_battery_loss=False, W_HL=0), faithful to the paper which optimizes DoD not HL. n=5 eval seeds, T_EVAL=5400, lambda_high=4.0. Best checkpoint by max-CR, step 2000.",
   "eval": {"n_seeds": 5, "T_EVAL": 5400, "lambda_high": 4.0},
   "MADDPG_DoD": {
     "display": "LyDRL-DoD",
     "checkpoint": "checkpoints/MADDPG_DoD_lh4_32K",
-    "select": "min-DoD s.t. CR>=0.32 (best_step=4000, best_dod=0.3886, best_cr=0.413)",
-    "satisfaction_mean": 0.417, "satisfaction_std": 0.004,
-    "dod_mean": 0.413, "dod_std": 0.011,
-    "hl_1e4_mean": 3.52, "hl_1e4_std": 0.04, "cumHL": 1.903,
-    "delay_mean": 6.05, "queue_tasks_mean": 4.9
+    "footing": "fair (env reward + completion incentive, 54-dim actor, 245-dim centralized critic, shared DVFS); MADDPG learner (Gumbel-Softmax + centralized critic); no battery virtual queue / no task-level advantage decomposition",
+    "select": "max-CR (best_step=2000, best_cr=0.828)",
+    "satisfaction_mean": 0.836, "satisfaction_std": 0.001,
+    "dod_mean": 0.486, "dod_std": 0.005,
+    "hl_1e4_mean": 5.18, "hl_1e4_std": 0.06, "cumHL": 2.795,
+    "delay_mean": 3.00, "queue_tasks_mean": 2.4
   },
   "LyaMAPPO": {
     "display": "LyaMAPPO",
@@ -19,9 +20,9 @@
     "delay_mean": 3.33, "queue_tasks_mean": 2.8
   },
   "_takeaways": [
-    "LyDRL-DoD achieves its objective: DoD 0.413 < LyaMAPPO 0.498 (a genuine, well-tuned DoD minimizer).",
-    "LyaMAPPO Pareto-dominates on everything that matters: satisfaction +89%, HL -50%, delay -45%, queue -43%.",
-    "Key paradox: LyDRL-DoD reaches LOWER DoD but 2x WORSE cumulative HL -> minimizing instantaneous DoD is a flawed proxy for battery lifetime; LyaMAPPO's HL-aware outcome-augmented design wins the real metric.",
-    "MADDPG (off-policy) showed pronounced regime instability during training (quick-eval CR swung 0.38<->0.79) vs MAPPO's stable convergence -- supporting the on-policy choice."
+    "Fair-footing MADDPG is competitive on service: satisfaction 0.836 (even edges LyaMAPPO 0.788), delay 3.00s, queue 2.4 -- a credible strong baseline, not a strawman.",
+    "But it incurs ~3x worse battery health: cumHL 2.795 vs LyaMAPPO 0.952 (HL/slot 5.18 vs 1.76 e-4).",
+    "Lacking LyaMAPPO's battery virtual queue z_n and task-level advantage decomposition, MADDPG trades battery lifetime for throughput -- LyaMAPPO Pareto-dominates on the battery-lifetime moat.",
+    "This places MADDPG in the high-throughput/high-HL cluster (with TD3-Sched 0.837/2.39, MHSPO 0.799/2.75, MAPPO_NoBat 0.822/2.87), all beaten by LyaMAPPO's uniquely low cumHL 0.952."
   ]
 }
