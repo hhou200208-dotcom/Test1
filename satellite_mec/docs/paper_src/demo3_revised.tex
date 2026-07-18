@@ -260,16 +260,16 @@ $d^i_{\max}$（s）为任务截止时间。
 从$t^i_0 + 1$时隙开始接受调度决策。
 
 系统为每个活跃任务$i$维护运行时状态记录
-$\mathcal{R}^i = (k^i,~\Delta^i_{trans})$，
+$\mathcal{R}^i = (k^i,~\Delta^i_{\mathrm{trans}})$，
 其中$k^i \in \{0,1,\ldots,K_{\max}\}$为已转发跳数，
 初始值$k^i=0$；
-$\Delta^i_{trans}$（s）为已累计ISL传输时延，
-初始值$\Delta^i_{trans}=0$。
+$\Delta^i_{\mathrm{trans}}$（s）为已累计ISL传输时延，
+初始值$\Delta^i_{\mathrm{trans}}=0$。
 每当任务经ISL从卫星$n$转发至邻居$m$时，
 运行时状态同步更新：
 \begin{equation}
     k^i \leftarrow k^i + 1,\qquad
-    \Delta^i_{trans} \leftarrow \Delta^i_{trans}
+    \Delta^i_{\mathrm{trans}} \leftarrow \Delta^i_{\mathrm{trans}}
     + \frac{s^i}{b_{nm}} + T_{nm}。
     \label{eq:runtime_update}
 \end{equation}
@@ -309,8 +309,15 @@ $\lambda_{\max}$为单时隙最大任务到达数（个）。
 
 \subsubsection{转发队列}
 
-每个MEC卫星$n$维护转发队列$Q^F_n(t)$，
-更新方程为\cite{zhang2024mhspo}：
+每个 MEC 卫星 $n$ 维护转发队列。为使符号严谨, 本文区分转发队列的
+\emph{任务集合}与 \emph{bits backlog}: 记 $\mathcal{Q}^F_n(t)$ 为
+时隙 $t$ 开始时转发队列中的任务集合, 其对应的 bits backlog 为
+集合内各任务输入数据量之和
+\begin{equation}
+    Q^F_n(t) = \sum_{i \in \mathcal{Q}^F_n(t)} s^i 。
+    \label{eq:QF_backlog}
+\end{equation}
+$Q^F_n(t)$ 的更新方程为\cite{zhang2024mhspo}：
 \begin{equation}
     Q^F_n(t\!+\!1) = \max\!\left\{Q^F_n(t)
     - \alpha_n(t) - \beta_n(t),~0\right\}
@@ -321,11 +328,11 @@ $\lambda_{\max}$为单时隙最大任务到达数（个）。
 其中各聚合量定义如下。
 $\alpha_n(t)$为时隙$t$内卫星$n$分发到计算队列的总任务数据量（bits）：
 \begin{equation}
-    \alpha_n(t) = \sum_{i \in Q^F_n(t)} s^i \alpha^i_n(t)。
+    \alpha_n(t) = \sum_{i \in \mathcal{Q}^F_n(t)} s^i \alpha^i_n(t)。
 \end{equation}
 $\beta_{nm}(t)$为时隙$t$内从卫星$n$转发给邻居$m$的总任务数据量（bits）：
 \begin{equation}
-    \beta_{nm}(t) = \sum_{i \in Q^F_n(t)} s^i \beta^i_{nm}(t)。
+    \beta_{nm}(t) = \sum_{i \in \mathcal{Q}^F_n(t)} s^i \beta^i_{nm}(t)。
 \end{equation}
 $\beta_n(t)$为卫星$n$转发给所有邻居的总任务数据量（bits）：
 \begin{equation}
@@ -333,8 +340,21 @@ $\beta_n(t)$为卫星$n$转发给所有邻居的总任务数据量（bits）：
 \end{equation}
 $\beta_{mn}(t)$为时隙$t$内从邻居$m$转发给卫星$n$的总任务数据量（bits）：
 \begin{equation}
-    \beta_{mn}(t) = \sum_{i \in Q^F_m(t)} s^i \beta^i_{mn}(t)。
+    \beta_{mn}(t) = \sum_{i \in \mathcal{Q}^F_m(t)} s^i \beta^i_{mn}(t)。
 \end{equation}
+
+为在不引入链路层资源分配变量的前提下抽象 ISL 资源, 本文对每条
+有向星间链路施加\emph{单链路单任务}约束: 在一个时隙内, 卫星 $n$
+至多经链路 $(n,m)$ 转发一个任务, 即
+\begin{equation}
+    \sum_{i \in \mathcal{Q}^F_n(t)} \beta^i_{nm}(t) \le 1,
+    \qquad \forall\, m \in \mathcal{N}_n。
+    \label{eq:link_one_task}
+\end{equation}
+此处 $b_{nm}$ 表示该被调度任务在链路资源分配后获得的有效链路速率;
+若任务无法满足单跳传输筛选条件（式\eqref{eq:deadline}）, 则相应
+转发动作不可行。本文不进一步优化底层链路资源分配, 式\eqref{eq:link_one_task}
+用于将 ISL 资源抽象为动作可行性的一部分, 以降低卸载调度问题的复杂度。
 
 与\cite{zhang2024mhspo}一致，
 各卫星在每时隙通过控制面消息与邻居共享队列状态、
@@ -357,23 +377,29 @@ $\beta_{mn}(t)$为时隙$t$内从邻居$m$转发给卫星$n$的总任务数据�
 
 \subsubsection{计算队列}
 
-计算队列$Q^B_n(t)$记录待处理任务的总数据量（bits），
-更新方程为\cite{zhang2024mhspo}：
+记 $\mathcal{Q}^B_n(t)$ 为时隙 $t$ 开始时计算队列中的任务集合,
+其任务个数为 $N^B_n(t) = |\mathcal{Q}^B_n(t)|$。对任务
+$i \in \mathcal{Q}^B_n(t)$, 定义其剩余未处理数据量
+$q^i_n(t) = s^i - \sum_{\ell=0}^{t-1} r^i_n(\ell)$,
+其中 $r^i_n(t)$ 为时隙 $t$ 内任务 $i$ 的处理数据量（bits）。
+相应地, 计算队列的 bits backlog 与 CPU workload 分别为
 \begin{equation}
-    Q^B_n(t\!+\!1) = \max\!\left\{Q^B_n(t)
-    - \sum_{i \in Q^B_n(t)} r^i_n(t),~0\right\}
+    Q^{B,\mathrm{bit}}_n(t) = \sum_{i \in \mathcal{Q}^B_n(t)} q^i_n(t),
+    \qquad
+    Q^{B,\mathrm{cyc}}_n(t) = \sum_{i \in \mathcal{Q}^B_n(t)} h^i\, q^i_n(t)。
+    \label{eq:QB_backlog}
+\end{equation}
+bits backlog $Q^{B,\mathrm{bit}}_n(t)$ 的更新方程为\cite{zhang2024mhspo}：
+\begin{equation}
+    Q^{B,\mathrm{bit}}_n(t\!+\!1) = \max\!\left\{Q^{B,\mathrm{bit}}_n(t)
+    - \sum_{i \in \mathcal{Q}^B_n(t)} r^i_n(t),~0\right\}
     + \alpha_n(t),
     \label{eq:QB_update}
 \end{equation}
 其中$r^i_n(t)$为时隙$t$内任务$i$的处理数据量（bits）。
-任务$i$一旦处理完成，立即从$Q^B_n$中移除；
-$\alpha_n(t)$在时隙$t$末尾加入$Q^B_n(t+1)$，
+任务$i$一旦处理完成，立即从 $\mathcal{Q}^B_n$ 中移除；
+$\alpha_n(t)$在时隙$t$末尾加入 $\mathcal{Q}^B_n(t+1)$，
 从时隙$t+1$开始被处理。
-
-此外，定义$N^B_n(t)$为计算队列中的任务个数：
-\begin{equation}
-    N^B_n(t) = |\{i : i \in Q^B_n(t)\}|。
-\end{equation}
 
 % ============================================================
 \subsection{计算模型}
@@ -386,17 +412,20 @@ $\alpha_n(t)$在时隙$t$末尾加入$Q^B_n(t+1)$，
     \min_{0 \le f \le c_n}\; V_f\,\kappa f^3\tau - Q^{B,\mathrm{cyc}}_n(t)\,f\,\tau
 \end{equation}
 求得（该控制律为所有对比算法共享），
-其中$Q^{B,\mathrm{cyc}}_n(t)$为计算队列的剩余 CPU 周期总量（即 $Q^B_n$ 中各任务剩余数据量与其计算密度 $h^i$ 之积的总和），$c_n$为CPU频率上限。
+其中$Q^{B,\mathrm{cyc}}_n(t)$为计算队列的剩余 CPU 周期总量（式\eqref{eq:QB_backlog}），$c_n$为CPU频率上限。
 一阶条件给出闭式解$f^{lyap}_n(t) = \sqrt{Q^{B,\mathrm{cyc}}_n(t)/(3 V_f \kappa)}$。
 为提高任务按时完成的可能性，在公平份额调度（每任务获$f/N^B_n$）下构造截止时间感知的频率下限
 \begin{equation}
-    f^{floor}_n(t) = N^B_n(t)\cdot\max_{i \in Q^B_n(t)}
+    f^{floor}_n(t) = N^B_n(t)\cdot\max_{i \in \mathcal{Q}^B_n(t)}
     \frac{g^i_n(t)}{w^i_n(t)},
 \end{equation}
-其中$g^i_n(t)$、$w^i_n(t)$分别为任务$i$的剩余CPU周期数与剩余可用时间。
-最终计算频率为
+其中$g^i_n(t)$、$w^i_n(t)$分别为任务$i$的剩余CPU周期数与剩余时间预算。
+最终计算频率按计算队列是否为空分段确定：
 \begin{equation}
-    f^{cmp}_n(t) = \mathrm{clip}\!\big(\max(f^{lyap}_n(t),\, f^{floor}_n(t)),\, 0,\, c_n\big),
+    f^{cmp}_n(t) = \begin{cases}
+        0, & N^B_n(t) = 0, \\[1mm]
+        \mathrm{clip}\!\big(\max(f^{lyap}_n(t),\, f^{floor}_n(t)),\, 0,\, c_n\big), & N^B_n(t) > 0,
+    \end{cases}
     \label{eq:cpu_alloc}
 \end{equation}
 权重$V_f$经校准使$f^{cmp}$在满队列工况（参考 workload
@@ -410,14 +439,18 @@ $V_f = \dfrac{B^{cap}_n\, s_{\max} h_{\max}}{3\,c_n^2\,\kappa}$。
     s^i - \sum_{l=0}^{t-1} r^i_n(l)\right\}。
     \label{eq:workload}
 \end{equation}
-任务$i$在卫星$n$的计算时延为：
+任务$i$在卫星$n$的计算时延由完成时刻反向定义。设任务$i$于时隙$t$末
+进入计算队列，则完成所需时隙数为
 \begin{equation}
-    d^{i,C}_n = \Delta t \cdot \tau,\quad
-    \text{满足}\quad
-    \sum_{l=t+1}^{t+\Delta t} r^i_n(l) = s^i，
+    \Delta t = \min\left\{
+    u \in \mathbb{Z}_+ :
+    \sum_{\ell=t+1}^{t+u} r^i_n(\ell) \ge s^i
+    \right\},
+    \qquad
+    d^{i,C}_n = \Delta t \cdot \tau，
     \label{eq:comp_delay}
 \end{equation}
-其中$\Delta t$为完成任务所需的时隙数。
+即累计处理数据量首次不小于任务输入量$s^i$时所经历的时隙数。
 
 % ============================================================
 \subsection{传输与计算服务时间估计}
@@ -427,7 +460,7 @@ $V_f = \dfrac{B^{cap}_n\, s_{\max} h_{\max}}{3\,c_n^2\,\kappa}$。
 任务$i$的\emph{传输与计算服务时间}（不含排队等待）为：
 \begin{equation}
     d^i_{total} =
-    \underbrace{\Delta^i_{trans}}_{\text{累计ISL传输时延}}
+    \underbrace{\Delta^i_{\mathrm{trans}}}_{\text{累计ISL传输时延}}
     + \underbrace{d^{i,C}_{n^i_{final}}}_{\text{计算时延}},
     \label{eq:e2e_delay}
 \end{equation}
@@ -435,25 +468,20 @@ $V_f = \dfrac{B^{cap}_n\, s_{\max} h_{\max}}{3\,c_n^2\,\kappa}$。
 $d^i_{total}$仅刻画服务时间；任务的真实端到端时延（含各级排队等待）
 由式\eqref{eq:d_real}的$d^i_{real}$在仿真中统计。
 
-剩余时间窗口从任务进入转发队列的时隙$t^i_0$开始计算，
-随时隙$t$动态减少：
+剩余时间预算从任务进入转发队列的时隙$t^i_0$开始计算，
+随时隙$t$以时隙级墙钟时间递减：
 \begin{equation}
-    d^i_{remain}(t) = d^i_{\max}
-    - (t - t^i_0)\cdot\tau
-    - \Delta^i_{trans},
+    w^i_n(t) = d^i_{\max} - (t - t^i_0)\cdot\tau,
     \quad t \geq t^i_0 + 1。
-    \label{eq:d_remain}
+    \label{eq:w_remain}
 \end{equation}
-其中$(t - t^i_0)\cdot\tau$刻画任务从到达接入卫星
-到当前时隙经历的等待与处理时间，
-$\Delta^i_{trans}$为已完成的所有ISL跳的
-实际传输时间与传播时延之和，
-按式\eqref{eq:runtime_update}逐跳累积。
-需要说明，式\eqref{eq:d_remain}同时扣除时隙经历量$(t - t^i_0)\tau$
-与累计传输时延$\Delta^i_{trans}$：前者按时隙量化刻画在系统内的驻留时间，
-后者额外计入 ISL 物理传输与传播时延。当一次转发占用整时隙时，
-二者叠加使剩余时间估计\emph{偏保守}，可能提前排除部分多跳转发动作；
-该保守性不会导致截止时间被违反，其对多跳能力的影响在第~\ref{sec:simulation}~节局限性中讨论。
+其中$(t - t^i_0)\cdot\tau$按时隙粒度刻画任务自到达接入卫星以来在
+系统内（含星间转发所占时隙）的全部驻留时间。由于该墙钟时间已经
+涵盖转发所占时隙，式\eqref{eq:w_remain}\emph{不再}额外扣除累计
+ISL 传输时延$\Delta^i_{\mathrm{trans}}$，从而避免对转发时延的重复扣除。
+$\Delta^i_{\mathrm{trans}}$（式\eqref{eq:runtime_update}）作为累计 ISL
+物理传输与传播时延的统计量保留，用于服务时间分析（式\eqref{eq:e2e_delay}）
+与刻画转发动作的物理链路代价，不再从 wall-clock 剩余时间预算中重复扣除。
 
 在仿真评估中，任务的真实端到端时延采用：
 \begin{equation}
@@ -467,25 +495,25 @@ $d^i_{real}$天然包含排队等待、ISL传输和计算的全部时延，
 任务$i$在卫星$n$卸载给邻居$m$的截止时间可行性条件为：
 \begin{equation}
     \frac{s^i}{b_{nm}} + T_{nm}
-    + \hat{d}^{i,C}_m \leq d^i_{remain}(t),
+    + \hat{d}^{i,C}_m(t) \leq w^i_n(t),
     \label{eq:deadline}
 \end{equation}
-其中$\hat{d}^{i,C}_m$为邻居$m$对任务$i$的预估计算时延：
+其中$\hat{d}^{i,C}_m(t)$为邻居$m$对任务$i$的预估计算时延，
+本文采用 workload 感知的粗粒度估计：
 \begin{equation}
-    \hat{d}^{i,C}_m = \left\lceil
-    \frac{s^i h^i (N^B_m(t) + 1)}{c_m \cdot \tau}
+    \hat{d}^{i,C}_m(t) = \left\lceil
+    \frac{Q^{B,\mathrm{cyc}}_m(t) + s^i h^i}{c_m \cdot \tau}
     \right\rceil \cdot \tau。
     \label{eq:est_comp_delay}
 \end{equation}
-$+1$表示任务$i$加入后的队列增量。
-需要强调，式\eqref{eq:est_comp_delay}是基于当前任务数的\emph{粗粒度预测}：
-它不使用计算队列中已有任务的完整剩余 workload，
-且未来任务到达会改变处理器公平份额，
+需要强调，式\eqref{eq:est_comp_delay}是基于邻居\emph{当前}计算 workload
+$Q^{B,\mathrm{cyc}}_m(t)$ 叠加任务$i$自身计算需求$s^ih^i$的\emph{粗粒度预测}：
+它假设卫星$m$以硬件频率上限$c_m$满频运行，且不预测未来任务到达，
 因此\textbf{不构成}真实端到端 deadline 的确定性保证。
 该预测仅用于\emph{转发}动作的可行性筛选（排除预计不可行的转发目标）；
 \textbf{本地处理动作不执行该截止时间预测筛选}，但仍受计算队列并发上限$B^{cap}_n$限制，作为动作集合可能为空时的兜底决策。
 任务的真实超时由完成轨迹按$d^i_{real} \le d^i_{\max}$统计（式\eqref{eq:d_real}）：
-当$d^i_{remain}(t) \leq 0$仍未完成时，任务视为超时并从队列中移除。
+当$w^i_n(t) \leq 0$仍未完成时，任务视为超时并从队列中移除。
 当$k^i = K_{\max}$时转发动作不可行，任务只能本地处理或被动保留。
 
 % ============================================================
@@ -493,7 +521,7 @@ $+1$表示任务$i$加入后的队列增量。
 % ============================================================
 
 $DoD_n(t)$表示时隙$t$开始时卫星$n$的放电深度状态，
-与队列变量$Q^F_n(t)$、$Q^B_n(t)$的时序定义保持一致，
+与任务集合$\mathcal{Q}^F_n(t)$、$\mathcal{Q}^B_n(t)$的时序定义保持一致，
 均为时隙$t$开始时的已知量，可直接用于时隙$t$的调度决策。
 
 定义时隙$t$的净DoD增量为：
@@ -680,8 +708,10 @@ $T_{nm}$ & 星间链路传播时延（s），快照内固定 \\
 $\tau$ & 时隙长度（s） \\
 $s^i, h^i, d^i_{\max}$ & 任务大小（bits）、每bit CPU周期数、截止时间（s） \\
 $s_{\min}, s_{\max}$ & 任务数据量下界、上界（bits） \\
-$Q^F_n(t)$ & 转发队列总数据量（bits） \\
-$Q^B_n(t)$ & 计算队列总数据量（bits） \\
+$\mathcal{Q}^F_n(t)$ & 转发队列任务集合 \\
+$Q^F_n(t)$ & 转发队列 bits backlog，$=\sum_{i\in\mathcal{Q}^F_n(t)}s^i$ \\
+$\mathcal{Q}^B_n(t)$ & 计算队列任务集合 \\
+$Q^{B,\mathrm{bit}}_n(t)$ & 计算队列 bits backlog \\
 $N^B_n(t)$ & 计算队列任务数（个） \\
 $\hat{N}^B_n$ & 时隙内临时计算队列任务数（个） \\
 $N^F_n(t)$ & 转发队列任务数（个） \\
@@ -694,7 +724,7 @@ $\beta_{nm}(t)$ & 时隙$t$从卫星$n$转发给邻居$m$的总数据量（bits�
 $\beta_n(t)$ & 时隙$t$卫星$n$转发给所有邻居的总数据量（bits） \\
 $\beta_{mn}(t)$ & 时隙$t$从邻居$m$转发给卫星$n$的总数据量（bits） \\
 $\hat{d}^{i,C}_m$ & 任务$i$在邻居$m$的预估计算时延（s） \\
-$d^i_{remain}(t)$ & 任务$i$在时隙$t$的剩余可用时间窗口（s） \\
+$\Delta^i_{\mathrm{trans}}$ & 任务$i$累计ISL传输与传播时延（s） \\
 $d^i_{real}$ & 任务$i$的真实端到端时延（s） \\
 $t^i_{finish}$ & 任务$i$完成计算并退出系统的时隙 \\
 $DoD_n(t), DoD_{\max}$ & 放电深度、风险状态投影上界/评估阈值（0.8） \\
@@ -726,7 +756,7 @@ $V_f$ & DVFS 频率选择权衡参数（经校准，$V_f=B^{cap}_n s_{\max} h_{\
 $Q^{B,\mathrm{cyc}}_n(t)$ & 计算队列剩余 CPU 周期总量（cycles） \\
 $f^{cmp}_n(t)$ & 时隙$t$卫星$n$的计算频率（cycles/s） \\
 $f^{floor}_n(t)$ & 截止时间感知的最低计算频率下限（cycles/s） \\
-$g^i_n(t),\,w^i_n(t)$ & 任务$i$的剩余CPU周期数、剩余可用时间 \\
+$g^i_n(t),\,w^i_n(t)$ & 任务$i$的剩余CPU周期数、剩余时间预算 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -753,7 +783,7 @@ $g^i_n(t),\,w^i_n(t)$ & 任务$i$的剩余CPU周期数、剩余可用时间 \\
 \text{s.t.} \quad
 &\text{(C1)} \quad \alpha^i_n(t) + \sum_{m \in \mathcal{N}_n}
 \beta^i_{nm}(t) \leq 1,
-\quad \forall i \in Q^F_n(t) \\
+\quad \forall i \in \mathcal{Q}^F_n(t) \\
 &\text{(C2)} \quad \beta^i_{nm}(t)=1 \Rightarrow k_i(t) < K_{\max},
 \quad k_i(t\!+\!1)=k_i(t)+1 \\
 &\text{(C3)} \quad \hat{N}^B_n(t) \leq B^{cap}_n,
@@ -777,7 +807,7 @@ $\lambda_s>0$为电池--服务权衡系数（完成权重归一化为$1$）。
 C1表示每个任务至多选择一个动作（本地处理或转发给某邻居）；
 当所有代码动作均被掩码时，全零决策对应环境将任务\emph{被动}保留在转发队列，
 该保留并非 Actor 主动选择的动作（动作空间不含显式等待动作，见第~\ref{sec:algorithm}~节）；
-$d^i_{remain}(t)\le 0$的任务视为超时并移除。
+$w^i_n(t)\le 0$的任务视为超时并移除。
 C2为条件化跳数约束，C3为计算队列并发上限
 （$\hat{N}^B_n$为计入本时隙已分发任务后的计算队列任务数，
 其上限 $B^{cap}_n$ 限制同时驻留计算队列的任务并发数），
@@ -837,15 +867,15 @@ s_n(t) = \Big[
 \hat{Z}_n,\ \xi_n(t),\ \tau^{switch}_n(t)}_{\text{本地节点状态}}, \\
 &\underbrace{\{b_{nm},\ T_{nm},\ \tilde{Q}^F_m(t),\
 N^B_m(t),\ DoD_m(t)\}_{m \in \mathcal{N}_n}}_{\text{邻居状态}}, \\
-&\underbrace{s^i,\ h^i,\ k^i,\ \Delta^i_{trans},\
-d^i_{remain}(t)}_{\text{当前任务状态}}
+&\underbrace{s^i,\ h^i,\ k^i,\ \Delta^i_{\mathrm{trans}},\
+w^i_n(t)}_{\text{当前任务状态}}
 \Big]
 \end{aligned}
 \label{eq:state}
 \end{equation}
 
 其中$\hat{N}^B_n$和$\hat{Z}_n$为时隙内临时状态，随顺序决策动态更新。
-每时隙内，卫星按转发队列中任务的剩余时间$d^i_{remain}(t)$升序、
+每时隙内，卫星按转发队列中任务的剩余时间$w^i_n(t)$升序、
 并以任务大小$s^i$升序打破平局（即最早截止优先，EDF）依次决策；
 训练与评估采用相同的遍历顺序以保证可复现。
 $\xi_n(t)$让智能体感知充放电状态；
@@ -862,13 +892,13 @@ $\tau^{switch}_n(t)$让智能体预判充放电状态切换；
 \begin{equation}
 \mathcal{A}^{feasible}_i =
 \{local : \hat{N}^B_n < B^{cap}_n\}
-\cup \Big\{m \in \mathcal{N}_n : \tfrac{s^i}{b_{nm}}+T_{nm}+\hat{d}^{i,C}_m \le d^i_{remain}(t),\ k^i < K_{\max}\Big\}。
+\cup \Big\{m \in \mathcal{N}_n : \tfrac{s^i}{b_{nm}}+T_{nm}+\hat{d}^{i,C}_m(t) \le w^i_n(t),\ k^i < K_{\max}\Big\}。
 \label{eq:feasible_actions}
 \end{equation}
 
 本地动作仅在计算队列并发数 $\hat{N}^B_n < B^{cap}_n$ 时可行，
 且不执行截止时间预测筛选（见第~\ref{sec:system_model}~节）。
-若$d^i_{remain}(t) \leq 0$则任务超时从队列移除；
+若$w^i_n(t) \leq 0$则任务超时从队列移除；
 当 local 与所有转发动作均不可行时，任务被动保留至下一时隙。
 
 \subsubsection{奖励函数}
@@ -896,7 +926,7 @@ r^{base,a}_n(i,t) = -\bar{c}^a_n(i,t),
 \begin{equation}
 \bar{c}^{local}_n(i,t) =
 \frac{1}{1+V}\cdot\frac{s^i(N^B_n(t) - N^F_n(t))}{s_{\max}\cdot\theta_n}
-+ \frac{1}{1+V}\cdot\frac{s^i}{s_{\max}\cdot\theta_n}\Big(1-\frac{d^i_{remain}(t)}{d^{ub}_{\max}}\Big)
++ \frac{1}{1+V}\cdot\frac{s^i}{s_{\max}\cdot\theta_n}\Big(1-\frac{w^i_n(t)}{d^{ub}_{\max}}\Big)
 + \frac{V}{1+V}\cdot\frac{\Delta\mathcal{L}^{i,comp}_n}{\mathcal{L}^{new}_{\max}}
 + \eta\cdot\frac{\hat{Z}_n\cdot\widehat{\Delta DoD}^{i,comp}_n}
 {Z_{\max}\cdot\Delta DoD_{\max}},
@@ -908,7 +938,7 @@ r^{base,a}_n(i,t) = -\bar{c}^a_n(i,t),
 \begin{equation}
 \bar{c}^{offload}_{nm}(i,t) =
 \frac{1}{1+V}\cdot\frac{s^i(N^F_m(t) - N^F_n(t))}{s_{\max}\cdot\theta_n}
-+ \frac{1}{1+V}\cdot\frac{s^i}{s_{\max}\cdot\theta_n}\Big(1-\frac{d^i_{remain}(t)}{d^{ub}_{\max}}\Big)
++ \frac{1}{1+V}\cdot\frac{s^i}{s_{\max}\cdot\theta_n}\Big(1-\frac{w^i_n(t)}{d^{ub}_{\max}}\Big)
 + \frac{V}{1+V}\cdot\frac{\Delta\mathcal{L}^{i,trans}_n}{\mathcal{L}^{new}_{\max}}
 + \eta\cdot\frac{\hat{Z}_n\cdot\widehat{\Delta DoD}^{i,trans}_{n\to m}}
 {Z_{\max}\cdot\Delta DoD_{\max}},
@@ -918,7 +948,7 @@ r^{base,a}_n(i,t) = -\bar{c}^a_n(i,t),
 其中$\eta > 0$为\emph{名义能源压力项}（$\hat{Z}_n\cdot\widehat{\Delta DoD}$）的惩罚系数；
 权重$\frac{1}{1+V}$和$\frac{V}{1+V}$为控制队列项与边际老化项相对尺度的经验塑形系数。
 式\eqref{eq:cost_local}\eqref{eq:cost_offload}的第二项为\emph{紧迫度}辅助项，
-随任务剩余时间$d^i_{remain}(t)$减小而增大（$d^{ub}_{\max}$为截止时间上界），
+随任务剩余时间$w^i_n(t)$减小而增大（$d^{ub}_{\max}$为截止时间上界），
 对本地与转发动作对称施加，用于在临近截止时提升该任务的调度优先级；
 由于该项对两类动作相同，不改变本地与转发之间的相对偏好，仅调节其绝对量级。
 两式的队列差分项统一采用原始转发队列任务数$N^F$（本地为$N^B_n-N^F_n$、转发为$N^F_m-N^F_n$），
@@ -1076,7 +1106,7 @@ $R^{prior}$ 利用队列差、DoD 边际老化和名义能源压力构造任务�
 %                 \IF{$N^F_n(t) \leq \theta_n$}
 %                     \STATE 接受任务，初始化
 %                            $\mathcal{R}^i = (0, 0)$
-%                            （$k^i=0$，$\Delta^i_{trans}=0$）
+%                            （$k^i=0$，$\Delta^i_{\mathrm{trans}}=0$）
 %                 \ELSE
 %                     \STATE 拒绝任务
 %                 \ENDIF
@@ -1091,14 +1121,14 @@ $R^{prior}$ 利用队列差、DoD 边际老化和名义能源压力构造任务�
 %             \STATE $\hat{Z}_n \leftarrow Z_n(t)$
 %             \STATE 计算$V_\phi(s^{critic}_n(t))$，
 %                    存入时隙级记录
-%             \STATE 按$d^i_{remain}(t)$升序排列：
+%             \STATE 按$w^i_n(t)$升序排列：
 %                    $\pi_n(t) \leftarrow
-%                    \text{sort}(Q^F_n(t),\ d^i_{remain}\text{升序})$
+%                    \text{sort}(\mathcal{Q}^F_n(t),\ w^i_n(t)\text{升序})$
 %             \STATE 平局打破：按$s^i$升序
 
 %             \FOR{每个任务$i \in \pi_n(t)$}
-%                 \STATE 更新$d^i_{remain}(t)$（见式\eqref{eq:d_remain}）
-%                 \IF{$d^i_{remain}(t) \leq 0$}
+%                 \STATE 更新$w^i_n(t)$（见式\eqref{eq:w_remain}）
+%                 \IF{$w^i_n(t) \leq 0$}
 %                     \STATE 任务超时，从队列移除；\textbf{continue}
 %                 \ENDIF
 
@@ -1110,7 +1140,7 @@ $R^{prior}$ 利用队列差、DoD 边际老化和名义能源压力构造任务�
 %                                （用$N^B_m(t)+1$，见式\eqref{eq:est_comp_delay}）
 %                         \IF{$\frac{s^i}{b_{nm}} + T_{nm}
 %                             + \hat{d}^{i,C}_m
-%                             \leq d^i_{remain}(t)$}
+%                             \leq w^i_n(t)$}
 %                             \STATE $\mathcal{A}^{feasible}_i \leftarrow
 %                                    \mathcal{A}^{feasible}_i \cup \{m\}$
 %                         \ENDIF
@@ -1138,8 +1168,8 @@ $R^{prior}$ 利用队列差、DoD 边际老化和名义能源压力构造任务�
 %                            -\bar{c}^{offload}_{nm}(i,t)$
 %                     \STATE 更新运行时状态：
 %                            $k^i \leftarrow k^i + 1$；
-%                            $\Delta^i_{trans} \leftarrow
-%                            \Delta^i_{trans} + s^i/b_{nm} + T_{nm}$
+%                            $\Delta^i_{\mathrm{trans}} \leftarrow
+%                            \Delta^i_{\mathrm{trans}} + s^i/b_{nm} + T_{nm}$
 %                     \STATE 更新临时状态：
 %                            $\hat{Z}_n \leftarrow \hat{Z}_n
 %                            + \Delta DoD^{i,trans}_n$
@@ -1155,7 +1185,7 @@ $R^{prior}$ 利用队列差、DoD 边际老化和名义能源压力构造任务�
 
 %         \STATE \textbf{// Step4：任务处理与状态更新}
 %         \FOR{每颗卫星$n \in \mathcal{N}$}
-%             \FOR{每个任务$i \in Q^B_n(t)$}
+%             \FOR{每个任务$i \in \mathcal{Q}^B_n(t)$}
 %                 \STATE 按式\eqref{eq:workload}计算$r^i_n(t)$
 %                 \IF{任务$i$处理完成}
 %                     \STATE 从$Q^B_n$移除
@@ -1252,9 +1282,10 @@ $R^{prior}$ 利用队列差、DoD 边际老化和名义能源压力构造任务�
 所报告的能耗为\emph{可调度动态能耗}（计算 $+$ ISL 传输），\textbf{不含}固定 $5$~W 平台基础功率；
 该基础功率计入 DoD 风险状态（并经 DoD 相关老化权重 $\mathcal{L}'$ 影响寿命消耗），但不归因于卸载策略本身。
 $DoD_{\max}=0.8$ 为有界状态投影/评估阈值，并非物理硬截断。
-星间链路速率 $b_{nm}$ 为有效的每任务传输速率，本文\emph{不}显式建模同一链路上任务间的带宽竞争与传输队列，
-即未强制 $\sum_i s^i\beta^i_{nm}(t)\le b_{nm}\tau$；在本文评估中约 $13\%$ 的转发落在名义传输量超过 $b_{nm}\tau$ 的链路--时隙，
-故卸载能力与时延为\emph{偏乐观}估计。另一方面，剩余时间估计式\eqref{eq:d_remain}对已发生传输的时延为偏保守扣除。
+星间链路速率 $b_{nm}$ 为链路资源分配后面向单个被调度任务的有效传输速率；系统模型采用单链路单任务抽象（式\eqref{eq:link_one_task}），
+本文\emph{不}显式建模底层链路资源分配与同一链路上任务间的带宽竞争。用于评估的参考实现放宽了该抽象、允许同一链路在一个时隙内并发转发多个任务，
+其中约 $13\%$ 的转发落在名义传输量超过 $b_{nm}\tau$ 的链路--时隙，故卸载能力与时延为\emph{偏乐观}估计。
+剩余时间预算 $w^i_n(t)$（式\eqref{eq:w_remain}）以时隙级墙钟时间统计任务在系统内的驻留，累计 ISL 物理传输时延仅用于候选转发动作的可行性筛选，二者不重复扣除。
 截止时间以基于预测可行性的\emph{动作筛选}方式施加，而非端到端硬保证。
 
 
