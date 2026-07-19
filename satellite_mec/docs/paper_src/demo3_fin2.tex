@@ -941,7 +941,7 @@ $\mathcal{L}(\cdot)$ & 归一化电池寿命消耗函数 \\
 $Z_n(t)$ & 名义能源赤字压力特征，追踪历史净放电赤字 \\
 $D_n(t)$ & 时隙$t$完成处理的任务数（个） \\
 $P^{\mathrm{base}}$ & 平台基础功率（W，仿真假设） \\
-$H_n(t)$ & 逐时隙实测边际寿命消耗 \\
+$H_n(t)$ & 逐时隙实现的一阶边际老化（见式\eqref{eq:H_slot}） \\
 $P^Q_n(t)$ & 队列压力辅助项 \\
 $B^{\mathrm{cap}}_n$ & 单星计算队列并发上限（个） \\
 $\kappa$ & 芯片能耗系数（J/cycle$^3$） \\
@@ -968,34 +968,40 @@ $d^i_{\mathrm{svc}}$ & 任务$i$的传输与计算服务时间（s，不含转�
 \label{sec:algorithm}
 % ============================================================
 
+本节给出电池寿命感知任务卸载的求解框架。整体设计围绕五个针对第~\ref{sec:system_model}~节
+所述挑战的选择展开：（i）\emph{battery/DoD-aware}——将 DoD 相关的非线性边际老化显式引入
+决策信号；（ii）\emph{one-hop neighborhood}——每颗卫星仅依赖一跳邻域观测在线决策，规避远端
+过期状态；（iii）\emph{parameter sharing}——全星座共享一套网络参数，使模型规模与星座规模解耦；
+（iv）\emph{CTDE}——集中训练、分布式执行，训练期用邻域 Critic 稳定信用分配；（v）\emph{action
+masking + dense prior}——用可行性掩码保证动作物理可行，并用一个 Lyapunov 启发的稠密先验缓解稀疏
+奖励与信用分配困难。需要提前声明：本文\textbf{不}主张所提方法求得 P1 的全局最优、也\textbf{不}主张
+提供严格的队列稳定性或电源物理安全保证；相关先验仅用于提升样本效率与编码领域知识，其有效性由
+第~\ref{sec:simulation}~节的经验对比与消融验证。
+
 \subsection{问题形式化}
+\label{subsec:problem}
 
-基于第~\ref{sec:system_model}~节的系统建模，
-本文将卸载调度问题形式化为如下\emph{带有界 DoD 风险投影的长期多智能体随机控制问题}。
-优化对象为参数共享的多智能体策略$\pi\in\Pi$（局部观测到动作分布的映射），
-而非预先给定的确定性动作序列：
-
+基于第~\ref{sec:system_model}~节的建模，本文将卸载调度\emph{建模目标}形式化为如下带有界 DoD
+风险投影的长期多智能体随机控制问题。优化对象为参数共享的多智能体策略 $\pi\in\Pi$（由局部观测到
+动作分布的因果映射），而非预先给定的确定性动作序列：
 \begin{equation}
 \begin{aligned}
-\mathbf{P1:} \quad &\min_{\pi \in \Pi} \quad
+\mathbf{P1:}\quad &\min_{\pi \in \Pi}\quad
 \limsup_{T \to \infty} \frac{1}{T} \sum_{t=0}^{T-1}
 \sum_{n \in \mathcal{N}} \mathbb{E}_\pi\!\left[
 \ell^{\mathrm{bat}}_n(t) + \lambda_s\, c^{\mathrm{svc}}_n(t)
 \right] \\
-\text{s.t.} \quad
-&\text{(C1)} \quad \alpha^i_n(t) + \sum_{m \in \mathcal{N}_n}
-\beta^i_{nm}(t) \leq 1,
-\quad \forall i \in \mathcal{Q}^F_n(t) \\
-&\text{(C2)} \quad \beta^i_{nm}(t)=1 \Rightarrow k_i(t) < K_{\max},
-\quad k_i(t\!+\!1)=k_i(t)+1 \\
-&\text{(C3)} \quad \hat{N}^B_n(t) \leq B^{\mathrm{cap}}_n,
-\quad \forall n \in \mathcal{N} \\
-&\text{(C4)} \quad DoD_n(t\!+\!1) =
+\text{s.t.}\quad
+&\text{(C1)}\ \ \alpha^i_n(t) + \sum_{m \in \mathcal{N}_n}
+\beta^i_{nm}(t) \leq 1,\quad \forall i \in \mathcal{Q}^F_n(t) \\
+&\text{(C2)}\ \ \beta^i_{nm}(t)=1 \Rightarrow k^i(t) < K_{\max},\
+k^i(t\!+\!1)=k^i(t)+1 \\
+&\text{(C3)}\ \ \hat{N}^B_n(t) \leq B^{\mathrm{cap}}_n,\quad \forall n \in \mathcal{N} \\
+&\text{(C4)}\ \ DoD_n(t\!+\!1) =
 \Pi_{[DoD_{\min},DoD_{\max}]}\!\big(DoD_n(t)+\delta_n(t)\big)
 \end{aligned}
 \label{eq:P1}
 \end{equation}
-
 其中电池老化代价与服务代价分别为
 \begin{equation}
 \ell^{\mathrm{bat}}_n(t) = \mathcal{L}'(DoD_n(t))\big[
@@ -1004,472 +1010,388 @@ $d^i_{\mathrm{svc}}$ & 任务$i$的传输与计算服务时间（s，不含转�
 c^{\mathrm{svc}}_n(t) = 0.5\,O_n(t)+0.5\,J_n(t)-D_n(t),
 \label{eq:p1_terms}
 \end{equation}
-$D_n,O_n,J_n$分别为时隙$t$完成、超时、拒绝的任务数，
-$\lambda_s>0$为电池--服务权衡系数（完成权重归一化为$1$）。
-C1表示每个任务至多选择一个动作（本地处理或转发给某邻居）；
-当所有代码动作均被掩码时，全零决策对应环境将任务\emph{被动}保留在转发队列，
-该保留并非 Actor 主动选择的动作（动作空间不含显式等待动作，见第~\ref{sec:algorithm}~节）；
-$w^i_n(t)\le 0$的任务视为超时并移除。
-C2为条件化跳数约束，C3为计算队列并发上限
-（$\hat{N}^B_n$为计入本时隙已分发任务后的计算队列任务数，
-其上限 $B^{\mathrm{cap}}_n$ 限制同时驻留计算队列的任务并发数），
-C4为有界DoD风险状态投影动态（式\eqref{eq:dod_dynamics}）。
-此外，决策变量满足 $\alpha^i_n(t),\beta^i_{nm}(t)\in\{0,1\}$；
-策略 $\pi$ 为仅依赖时隙 $t$ 可获信息的因果映射，
-并须服从队列动态式\eqref{eq:QF_update}\eqref{eq:QB_update}、
-可行动作集式\eqref{eq:feasible_actions}与任务超时移除规则。
-需要强调：本文\textbf{不}为完整P1构造严格的漂移加惩罚等价子问题；
-截止时间通过基于预测完成时间的\emph{动作筛选}处理（见下文），
-不作为确定性硬约束；队列稳定性作为经验评估指标而非算法保证；
-名义能源赤字特征$Z_n$不进入P1约束，仅用于奖励塑形。
+$D_n,O_n,J_n$ 分别为时隙 $t$ 完成、超时、拒绝的任务数，$\lambda_s>0$ 为电池--服务权衡系数
+（完成权重归一化为 $1$）。决策变量满足 $\alpha^i_n(t),\beta^i_{nm}(t)\in\{0,1\}$，
+并须服从队列动态式\eqref{eq:QF_update}\eqref{eq:QB_update}、可行动作集式\eqref{eq:feasible_actions}
+与任务超时移除规则。约束含义：C1 表示每个任务至多选择一种迁移动作（本地处理或转发给某个邻居），
+其\emph{严格小于} $1$（松弛）的情形对应任务被保留于转发队列，详见第~\ref{subsec:obs_action}~节；
+C2 为条件化跳数约束；C3 为计算队列并发上限（$\hat{N}^B_n$ 为计入本时隙已分发任务后的计算队列
+任务数）；C4 为有界 DoD 风险状态投影动态（式\eqref{eq:dod_dynamics}）。
 
-% ============================================================
-\subsection{Lyapunov 启发的奖励设计动机}
-% ============================================================
+\noindent\textbf{P1 的地位（避免歧义）。}
+本文将 P1 用作\emph{目标与约束的建模界定}和统一的评估口径，而\textbf{非}后续被严格求解的对象。
+具体而言，本文不为完整 P1 构造漂移加惩罚等价子问题（见第~\ref{subsec:prior}~节）；实际训练优化的是一个
+$\gamma$-折扣的多智能体代理目标（见第~\ref{subsec:updates}~节），其与 P1 的长期时均目标\emph{不严格等价}，
+折扣回报在此仅作为长期平均代价的可优化代理。此外，截止时间通过基于预测完成时间的\emph{动作筛选}处理
+（式\eqref{eq:feasible_actions}），不作为确定性硬约束；队列稳定性作为\emph{经验评估指标}而非算法保证；
+名义能源赤字特征 $Z_n$（式\eqref{eq:virtual_queue}）不进入 P1 约束，仅用作状态特征与奖励塑形。
 
-本文不对完整 P1 构造严格的漂移加惩罚分解。作为奖励设计的动机，
-我们借用单时隙队列与 DoD 漂移的直觉：将"缓解队列积压、抑制高 DoD 状态下的耗能"
-表达为每个候选动作的\emph{边费用先验}，并把该先验作为强化学习奖励的一部分
-（见第~\ref{subsec:reward}~节）。该边费用仅作为塑形信号，
-并不声称最小化它等价于求解某个每时隙最优子问题。
+\subsection{Lyapunov 启发的稠密先验}
+\label{subsec:prior}
 
-准入控制采用基于队列长度的固定阈值规则，与\cite{zhang2024mhspo}一致：
-当转发队列任务数 $N^F_n(t) \le \theta_n$ 时接受新到达任务，否则拒绝：
+强化学习在本问题中面临稀疏与延迟奖励：任务完成/超时的结果信号往往滞后于产生它的转发与计算决策
+若干时隙，直接以结果信号训练会带来严重的信用分配困难。为此，本文引入一个 Lyapunov 启发的\emph{稠密
+奖励塑形先验}：借用单时隙队列与 DoD 漂移的直觉，将``缓解队列积压、抑制高 DoD 状态下的耗能''表达为
+每个候选动作的\emph{归一化边费用}，并将其负值作为每步稠密奖励的一部分（第~\ref{subsec:reward}~节）。
+
+需要强调，该先验是\emph{reward shaping prior} 而非严格的 drift-plus-penalty 分解：
+它并非 potential-based shaping，因此\textbf{最大化}含该先验的复合累计奖励\textbf{不等价于}求解 P1、
+也\textbf{不}蕴含经典 Lyapunov 优化的渐近队列稳定性或 $[O(1/V),O(V)]$ 型权衡。本文使用``Lyapunov 启发''
+仅指边费用在\emph{形式上}借用了队列差分与单步漂移的结构，用于编码领域知识、提升样本效率，
+其收益以经验方式验证。
+
+准入控制采用与\cite{zhang2024mhspo}一致的基于队列长度的固定阈值规则：当转发队列任务数
+$N^F_n(t) \le \theta_n$ 时接受新到达任务，否则拒绝：
 \begin{equation}
-a^i_n(t) = \begin{cases} 1, & N^F_n(t) \leq \theta_n \\ 0, & \text{否则} \end{cases}
+a^i_n(t) = \begin{cases} 1, & N^F_n(t) \leq \theta_n, \\ 0, & \text{otherwise.} \end{cases}
 \label{eq:admission}
 \end{equation}
-调度决策（对每个任务在本地处理与可行邻居转发动作之间选择；
-若所有代码动作均被掩码，环境将任务被动保留在转发队列，该保留并非策略动作）
-由参数共享 MAPPO 学习，采用上述 Lyapunov 启发边费用作为稠密奖励塑形先验，
-并叠加面向长视野服务质量的结果信用信号。
+准入之后的调度决策（对每个任务在本地处理与可行邻居转发之间选择）由参数共享 MAPPO 学习，
+以上述边费用为稠密塑形先验，并叠加面向长视野服务质量的结果信用信号。
 
-% ============================================================
-\subsection{参数共享MAPPO算法设计}
-% ============================================================
+\subsection{面向一跳卸载的参数共享 MAPPO}
+\label{subsec:mappo}
 
-\subsubsection{整体框架}
+\noindent\textbf{Dec-POMDP 形式化。}
+将每颗卫星视为一个智能体，把上述在线卸载问题建模为部分可观测马尔可夫博弈
+$\langle \mathcal{N}, \mathcal{S}, \{\mathcal{A}_n\}_{n\in\mathcal{N}}, P, \{\mathcal{O}_n\}_{n\in\mathcal{N}}, \{R_n\}_{n\in\mathcal{N}}, \gamma \rangle$：
+全局状态 $\mathcal{S}$ 由各星队列集合、$DoD_n(t)$、光照几何与在途任务运行时状态构成；
+转移 $P$ 即第~\ref{sec:system_model}~节的队列动态式\eqref{eq:QF_update}\eqref{eq:QB_update}
+与 DoD 动态式\eqref{eq:dod_dynamics}；智能体 $n$ 的观测 $\mathcal{O}_n$ 为其\emph{一跳邻域}的局部映射
+（式\eqref{eq:state}）；动作集 $\mathcal{A}_n$ 为逐任务的本地/转发选择（第~\ref{subsec:obs_action}~节）；
+奖励 $R_n$ 见第~\ref{subsec:reward}~节；折扣因子 $\gamma\in(0,1)$。
 
-采用集中训练、分布式执行（CTDE）框架：
-训练阶段邻域Critic访问卫星$n$及其邻居的完整状态；
-执行阶段每颗卫星基于\emph{一跳邻域}状态（自身与邻居的队列、DoD、链路信息）驱动 Actor 网络独立决策。
-所有卫星共用一套网络参数（参数共享），
-输入状态里加入卫星ID $n_{id}$区分不同卫星。
-训练阶段 Critic 额外使用一个与星座规模无关的全局摘要统计量（如全网 DoD 的均值/标准差/最大值、平均队列等），执行阶段不使用。
+\noindent\textbf{CTDE 与参数共享。}
+采用集中训练、分布式执行（CTDE）：训练阶段邻域 Critic 访问卫星 $n$ 及其邻居的完整状态与一个
+固定维度的全局摘要；执行阶段每颗卫星仅基于\emph{一跳邻域}观测驱动 Actor 独立决策，不使用 Critic、
+不访问远端状态。所有卫星共用一套 Actor/Critic 参数（parameter sharing），并在观测中加入卫星
+ID $n_{id}$ 以区分个体。参数共享使网络参数量与星座规模 $N$ 解耦（详见第~\ref{subsec:complexity}~节）。
 
-\subsubsection{状态空间}
+\subsubsection{观测与动作掩码}
+\label{subsec:obs_action}
 
-每颗卫星$n$在对任务$i$做决策时的状态向量由以下主要分量构成：
-
+\noindent\textbf{观测（状态）空间。}
+卫星 $n$ 在对任务 $i$ 决策时的观测向量为
 \begin{equation}
 \begin{aligned}
 s_n(t) = \Big[
-&\underbrace{n_{id}}_{\text{卫星ID}},\
+&\underbrace{n_{id}}_{\text{ID}},\
 \underbrace{Q^F_n(t),\ \hat{N}^B_n,\ DoD_n(t),\
 \hat{Z}_n,\ \xi_n(t),\ \tau^{\mathrm{switch}}_n(t)}_{\text{本地节点状态}}, \\
 &\underbrace{\{b_{nm},\ T_{nm},\ \tilde{Q}^F_m(t),\
-N^B_m(t),\ DoD_m(t)\}_{m \in \mathcal{N}_n}}_{\text{邻居状态}}, \\
-&\underbrace{s^i,\ h^i,\ k^i,\ \Delta^i_{\mathrm{trans}},\
+N^B_m(t),\ DoD_m(t)\}_{m \in \mathcal{N}_n}}_{\text{邻居状态}},\
+\underbrace{s^i,\ h^i,\ k^i,\ \Delta^i_{\mathrm{trans}},\
 w^i_n(t)}_{\text{当前任务状态}}
 \Big]
-\end{aligned}
 \label{eq:state}
+\end{aligned}
 \end{equation}
+其中 $\hat{N}^B_n$ 与 $\hat{Z}_n$ 为\emph{时隙内临时状态}，随槽内顺序决策动态更新（见
+算法~\ref{alg:execution}）。为保证可复现，每时隙内卫星按转发队列任务的剩余时间预算 $w^i_n(t)$
+升序、以任务大小 $s^i$ 升序打破平局（即 EDF，最早截止优先）依次决策，训练与评估采用相同遍历顺序；
+该遍历顺序是固定先验而非学习量。特征作用上，$\xi_n(t)$ 使智能体感知充放电状态，
+$\tau^{\mathrm{switch}}_n(t)$ 使其预判光照切换，邻居 $DoD_m(t)$ 使其考虑星座级电池均衡。
+为可复现，实现中在式\eqref{eq:state}主分量之外补充如下由其\emph{确定性派生}的固定维度工程特征：
+上一时隙计算频率 $f^{\mathrm{cmp}}_n(t\!-\!1)$、归一化太阳能功率 $P^{\mathrm{solar}}_n(t)/P^{\mathrm{solar}}_{\max}$、
+DoD 余量 $DoD_{\max}-DoD_n(t)$、任务松弛比 $w^i_n(t)/d^{\mathrm{ub}}_{\max}$ 与所需频率比
+$g^i_n(t)/(w^i_n(t)c_n)$，以及邻居侧对应的计算队列 CPU 周期积压与光照/切换标志。这些特征均为
+上述状态量的确定性函数，不改变观测的因果结构与维度对 $N$ 的独立性；完整维度与归一化方式随开源
+实现给出。
 
-其中$\hat{N}^B_n$和$\hat{Z}_n$为时隙内临时状态，随顺序决策动态更新。
-每时隙内，卫星按转发队列中任务的剩余时间$w^i_n(t)$升序、
-并以任务大小$s^i$升序打破平局（即最早截止优先，EDF）依次决策；
-训练与评估采用相同的遍历顺序以保证可复现。
-$\xi_n(t)$让智能体感知充放电状态；
-$\tau^{\mathrm{switch}}_n(t)$让智能体预判充放电状态切换；
-邻居$m$的$DoD_m(t)$使智能体考虑星座级电池均衡。
-除上述主要分量外，实现中的状态还包含若干由其派生的工程特征
-（如上一时隙计算频率、归一化太阳能功率、DoD 余量，以及任务的松弛比与所需频率比等），
-并对邻居补充相应的计算队列与光照/切换信息；这些特征不改变状态的因果结构，此处从略。
-
-\subsubsection{动作空间}
-
-对任务$i$经动作掩码过滤后，可行动作集合为：
-
+\noindent\textbf{动作空间与可行性掩码。}
+对每个任务 $i$，动作集为 $\mathcal{A}_i=\{local\}\cup\mathcal{N}_n$。经可行性掩码过滤后的可行动作集为
 \begin{equation}
-\mathcal{A}^{feasible}_i =
-\{local : \hat{N}^B_n < B^{\mathrm{cap}}_n\}
-\cup \Big\{m \in \mathcal{N}_n : \tfrac{s^i}{b_{nm}}+T_{nm}+\hat{d}^{i,C}_m(t) \le w^i_n(t),\ k^i < K_{\max}\Big\}。
+\mathcal{A}^{\mathrm{feas}}_i =
+\big\{local : \hat{N}^B_n < B^{\mathrm{cap}}_n\big\}
+\cup \Big\{m \in \mathcal{N}_n : \tfrac{s^i}{b_{nm}}+T_{nm}+\hat{d}^{i,C}_m(t) \le w^i_n(t),\ k^i < K_{\max}\Big\}
 \label{eq:feasible_actions}
 \end{equation}
+Actor 仅在 $\mathcal{A}^{\mathrm{feas}}_i$ 上输出概率并采样。转发动作须通过式\eqref{eq:est_comp_delay}
+的预测完成时间筛选并满足跳数约束；本地动作\emph{不}施加截止时间预测筛选，仅受并发上限
+$\hat{N}^B_n<B^{\mathrm{cap}}_n$ 约束——这一非对称处理的原因是本地处理充当\emph{兜底动作}以避免可行集为空，
+若其最终仍超时则由 $d^i_{\mathrm{real}}>d^i_{\max}$ 统计为失败（见第~\ref{subsec:est}~节）。
 
-本地动作仅在计算队列并发数 $\hat{N}^B_n < B^{\mathrm{cap}}_n$ 时可行，
-且不执行截止时间预测筛选（见第~\ref{sec:system_model}~节）。
-若$w^i_n(t) \leq 0$则任务超时从队列移除；
-当 local 与所有转发动作均不可行时，任务被动保留至下一时隙。
+\noindent\textbf{被动保留（非策略动作）。}
+若 $w^i_n(t)\le0$ 则任务超时并从队列移除。若 $\mathcal{A}^{\mathrm{feas}}_i=\varnothing$
+（本地因 C3 不可行且所有邻居均被掩码），本时隙不对该任务采样任何动作，环境将其\emph{被动保留}
+于转发队列至下一时隙；该保留对应 C1 中 $\alpha^i_n+\sum_m\beta^i_{nm}=0$ 的松弛情形。
+本文动作空间\textbf{不含}显式等待动作，故被动保留不是 Actor 采样的动作、不产生策略梯度，
+不应被理解为策略主动选择的 wait。
 
-\subsubsection{奖励函数}
+\subsubsection{奖励设计}
 \label{subsec:reward}
 
-奖励由两层构成：$R_n(t) = R^{\mathrm{obj}}_n(t) + R^{\mathrm{prior}}_n(t)$。
-第一层 $R^{\mathrm{obj}}_n(t) = -\rho_H H_n(t)/H_{norm} + 10 D_n(t) - 5 O_n(t) - 5 J_n(t)$
-为与长期电池--服务目标相对应的\emph{结果型}信号（$H_n$ 为逐时隙实测边际寿命消耗，
-$D_n,O_n,J_n$ 为完成/超时/拒绝任务数），其尺度与 P1 对应但因经验权重与归一化不作精确数值等价。
-第二层 $R^{\mathrm{prior}}_n(t)$ 为 Lyapunov 启发的\emph{稠密塑形先验}，由任务级的队列差分压力、
-DoD 边际老化（式\eqref{eq:cost_local}\eqref{eq:cost_offload}中对应项）和名义能源压力构成。
-$R^{\mathrm{prior}}$ 并非 potential-based shaping，因此\textbf{最大化}该复合累计奖励
-\textbf{不等价于}求解 P1 的全局最优策略；它用于缓解稀疏奖励与信用分配困难。
-$V$ 为控制队列项与电池项相对尺度的经验塑形系数，不再声称产生经典 Lyapunov 的渐近权衡。
-
-对任务$i$执行动作$a$的基础奖励取每时隙 Lyapunov 归一化边费用之负：
-
+卫星 $n$ 在时隙 $t$ 的单智能体奖励由\emph{结果奖励}与\emph{先验奖励}两部分构成，二者作用互补且不重复计权：
 \begin{equation}
-r^{base,a}_n(i,t) = -\bar{c}^a_n(i,t),
-\label{eq:reward}
+R_n(t) = R^{\mathrm{obj}}_n(t) + R^{\mathrm{prior}}_n(t).
+\label{eq:reward_total}
 \end{equation}
 
-归一化边费用（本地处理）：
-
+\noindent\textbf{（i）结果奖励 $R^{\mathrm{obj}}$（时隙级，对齐 P1）。}
+直接以 P1 的服务与电池目标构造时隙级结果信号
 \begin{equation}
-\bar{c}^{local}_n(i,t) =
-\frac{1}{1+V}\cdot\frac{s^i(N^B_n(t) - N^F_n(t))}{s_{\max}\cdot\theta_n}
-+ \frac{1}{1+V}\cdot\frac{s^i}{s_{\max}\cdot\theta_n}\Big(1-\frac{w^i_n(t)}{d^{\mathrm{ub}}_{\max}}\Big)
+R^{\mathrm{obj}}_n(t) = w_d\, D_n(t) - w_{to}\, O_n(t) - w_{re}\, J_n(t)
+- \rho_H\, \frac{H_n(t)}{H_{\mathrm{norm}}},
+\label{eq:reward_obj}
+\end{equation}
+其中 $(w_d,w_{to},w_{re},\rho_H)=(10,5,5,2)$；$H_n(t)$ 为本时隙\emph{实现的一阶边际老化}，
+即对本时隙实际发生的计算与传输耗能按当前 DoD 权重求和
+\begin{equation}
+H_n(t) = \mathcal{L}'(DoD_n(t))\Big[\Delta DoD^{\mathrm{comp}}_n(t)+\Delta DoD^{\mathrm{trans}}_n(t)\Big],
+\label{eq:H_slot}
+\end{equation}
+$H_{\mathrm{norm}}$ 为经验归一化常数。需要澄清：$H_n$ 采用一阶（边际）形式以便与逐动作先验一致，
+它\emph{不同于}第~\ref{sec:simulation}~节所报告的累计寿命消耗指标——后者以真实 DoD 轨迹按
+式\eqref{eq:health_loss} 的 $\mathcal{L}$ 独立统计，用于评估而不进入奖励。
+
+\noindent\textbf{（ii）先验奖励 $R^{\mathrm{prior}}$（任务级稠密塑形）。}
+对槽内每个被决策任务 $i$ 施加边费用先验，并叠加队列压力辅助项
+\begin{equation}
+R^{\mathrm{prior}}_n(t) = \sum_{i \in \pi_n(t)} r^{\mathrm{base}}_n(i,t) - w_q\, P^{Q}_n(t),
+\qquad
+r^{\mathrm{base}}_n(i,t) = -\,\bar{c}^{\,a_i}_n(i,t),
+\label{eq:reward_prior}
+\end{equation}
+其中 $w_q=0.05$，$P^{Q}_n(t)$ 为队列压力辅助项，$\pi_n(t)$ 为槽内决策顺序，
+$\bar{c}^{\,a_i}_n(i,t)$ 为任务 $i$ 所选动作 $a_i$ 的归一化边费用。本地处理与转发的边费用分别为
+\begin{align}
+\bar{c}^{\,local}_n(i,t) &=
+\frac{1}{1+V}\cdot\frac{s^i(N^B_n(t) - N^F_n(t))}{s_{\max}\,\theta_n}
++ \frac{1}{1+V}\cdot\frac{s^i}{s_{\max}\,\theta_n}\Big(1-\frac{w^i_n(t)}{d^{\mathrm{ub}}_{\max}}\Big) \notag\\
+&\quad
 + \frac{V}{1+V}\cdot\frac{\Delta\mathcal{L}^{i,\mathrm{comp}}_n}{\mathcal{L}^{\mathrm{new}}_{\max}}
-+ \eta\cdot\frac{\hat{Z}_n\cdot\widehat{\Delta DoD}^{i,\mathrm{comp}}_n}
-{Z_{\max}\cdot\Delta DoD_{\max}},
-\label{eq:cost_local}
-\end{equation}
-
-归一化边费用（转发给邻居$m$）：
-
-\begin{equation}
-\bar{c}^{offload}_{nm}(i,t) =
-\frac{1}{1+V}\cdot\frac{s^i(N^F_m(t) - N^F_n(t))}{s_{\max}\cdot\theta_n}
-+ \frac{1}{1+V}\cdot\frac{s^i}{s_{\max}\cdot\theta_n}\Big(1-\frac{w^i_n(t)}{d^{\mathrm{ub}}_{\max}}\Big)
-+ \frac{V}{1+V}\cdot\frac{\Delta\mathcal{L}^{i,\mathrm{trans}}_n}{\mathcal{L}^{\mathrm{new}}_{\max}}
-+ \eta\cdot\frac{\hat{Z}_n\cdot\widehat{\Delta DoD}^{i,\mathrm{trans}}_{n\to m}}
-{Z_{\max}\cdot\Delta DoD_{\max}},
++ \eta\cdot\frac{\hat{Z}_n\,\widehat{\Delta DoD}^{i,\mathrm{comp}}_n}
+{Z_{\max}\,\Delta DoD_{\max}},
+\label{eq:cost_local}\\
+\bar{c}^{\,offload}_{nm}(i,t) &=
+\frac{1}{1+V}\cdot\frac{s^i(N^F_m(t) - N^F_n(t))}{s_{\max}\,\theta_n}
++ \frac{1}{1+V}\cdot\frac{s^i}{s_{\max}\,\theta_n}\Big(1-\frac{w^i_n(t)}{d^{\mathrm{ub}}_{\max}}\Big) \notag\\
+&\quad
++ \frac{V}{1+V}\cdot\frac{\Delta\mathcal{L}^{i,\mathrm{trans}}_{n\to m}}{\mathcal{L}^{\mathrm{new}}_{\max}}
++ \eta\cdot\frac{\hat{Z}_n\,\widehat{\Delta DoD}^{i,\mathrm{trans}}_{n\to m}}
+{Z_{\max}\,\Delta DoD_{\max}}.
 \label{eq:cost_offload}
-\end{equation}
-
-其中$\eta > 0$为\emph{名义能源压力项}（$\hat{Z}_n\cdot\widehat{\Delta DoD}$）的惩罚系数；
-权重$\frac{1}{1+V}$和$\frac{V}{1+V}$为控制队列项与边际老化项相对尺度的经验塑形系数。
-式\eqref{eq:cost_local}\eqref{eq:cost_offload}的第二项为\emph{紧迫度}辅助项，
-随任务剩余时间$w^i_n(t)$减小而增大（$d^{\mathrm{ub}}_{\max}$为截止时间上界），
-对本地与转发动作对称施加，用于在临近截止时提升该任务的调度优先级；
-由于该项对两类动作相同，不改变本地与转发之间的相对偏好，仅调节其绝对量级。
-两式的队列差分项统一采用原始转发队列任务数$N^F$（本地为$N^B_n-N^F_n$、转发为$N^F_m-N^F_n$），
-在队列项上保持对称。
-
-各归一化系数定义如下：
-
+\end{align}
+四项分别为：队列差分压力（统一采用转发队列任务数 $N^F$，本地为 $N^B_n-N^F_n$、转发为 $N^F_m-N^F_n$，
+在队列项上保持对称）、紧迫度辅助项（随 $w^i_n(t)$ 减小而增大，对两类动作\emph{对称}施加，
+故不改变本地与转发的相对偏好、仅调节绝对量级）、DoD 边际老化项（权重 $V/(1+V)$）与名义能源压力项
+（权重 $\eta$）。归一化尺度为
 \begin{equation}
 \mathcal{L}^{\mathrm{new}}_{\max} =
-\mathcal{L}'(DoD_{\max})\cdot\delta^{\mathrm{comp}}_{\max},
+\mathcal{L}'(DoD_{\max})\,\delta^{\mathrm{comp}}_{\max},
 \quad
-\delta^{\mathrm{comp}}_{\max} = \frac{\kappa s_{\max} h_{\max} c^2_n}{E^{\mathrm{cap}}_n},
+\delta^{\mathrm{comp}}_{\max} = \frac{\kappa\, s_{\max}\, h_{\max}\, c^2_n}{E^{\mathrm{cap}}_n},
 \label{eq:norm1}
 \end{equation}
-
 \begin{equation}
 \Delta DoD_{\max} = \delta_{\max,n},
-\quad
-Z_{\max} = T_{\mathrm{orbit}}\cdot\delta_{\max,n}。
+\qquad
+Z_{\max} = T_{\mathrm{orbit}}\,\delta_{\max,n},
 \label{eq:norm2}
 \end{equation}
-式\eqref{eq:norm1}\eqref{eq:norm2}中的$\mathcal{L}^{\mathrm{new}}_{\max}$、$\Delta DoD_{\max}$、$Z_{\max}$
-均为奖励项的\emph{经验归一化尺度}（$Z_{\max}$ 取一个轨道周期内 $Z_n$ 的名义尺度
-$T_{\mathrm{orbit}}\delta_{\max,n}$，$T_{\mathrm{orbit}}$ 为一个轨道周期的时隙数，$Z_n$ 于每轨道周期起始复位），而非严格理论上界；
-需要区分：$\delta^{\mathrm{comp}}_{\max}$（式\eqref{eq:norm1}，每任务满负荷计算的名义 DoD 尺度）
-与 $\delta_{\max,n}$（式\eqref{eq:delta_max}，单时隙净 DoD 增量尺度）为两个不同的量。
-由于$\delta_{\max,n}$未计入平台基础功率项，个别时隙的归一化值可能略超 $1$。
+其中 $Z_{\max}$ 取一个轨道周期内 $Z_n$ 的名义尺度（$T_{\mathrm{orbit}}$ 为一个轨道周期的时隙数，
+$Z_n$ 于每轨道周期起始复位）。式\eqref{eq:norm1}\eqref{eq:norm2} 均为经验\emph{归一化尺度}而非严格理论上界；
+$\delta^{\mathrm{comp}}_{\max}$（每任务满负荷计算的名义 DoD 尺度）与 $\delta_{\max,n}$（式\eqref{eq:delta_max}，
+单时隙净 DoD 增量尺度）为两个不同的量；因 $\delta_{\max,n}$ 未计入平台基础功率，个别时隙归一化值可能略超 $1$。
 
-为提升样本效率并稳定训练，在基础奖励上叠加 outcome-aware 辅助塑形项：
+\noindent\textbf{电池信号的两个粒度（避免误解为双重惩罚）。}
+式\eqref{eq:reward_obj} 中的 $H_n$ 与式\eqref{eq:cost_local}\eqref{eq:cost_offload} 中的 DoD 边际项
+是\emph{同一物理量（一阶边际老化）的两种视图}，而非两次独立惩罚：先验项给出\emph{逐动作}的
+事前（ex-ante，基于预测 DVFS 频率增量，式\eqref{eq:delta_dod_comp_task}）分解，用于槽内动作排序与信用分配；
+结果项 $H_n$ 给出\emph{时隙聚合}的事后（ex-post，基于本时隙实际频率）度量，用于将策略锚定到真正实现的
+老化。二者以经验权重 $\{V/(1+V),\ \rho_H\}$ 组合，本文\emph{不}声称该组权重最优；其相对强度与
+$\eta$ 的敏感性由第~\ref{sec:simulation}~节实验考察。综上，$R^{\mathrm{obj}}$ 提供与长期电池--服务目标
+对应的时隙级结果信号，$R^{\mathrm{prior}}$ 提供任务级稠密反馈；但如前所述，最大化 $R_n$ 并\textbf{不}
+等价于求解 P1。
 
+\subsubsection{策略与价值更新}
+\label{subsec:updates}
+
+\noindent\textbf{Actor 与掩码策略。}
+Actor 输入观测 $s_n(t)$，在可行动作集上输出概率分布（掩码屏蔽不可行动作）：
 \begin{equation}
-r^{\mathrm{shape}}_n(t) = w_d D_n(t) - w_{to} O_n(t) - w_{re} J_n(t)
-- w_h \frac{H_n(t)}{H_{norm}} - w_q P^{Q}_n(t),
-\label{eq:reward_shape}
-\end{equation}
-
-其中$D_n, O_n, J_n$分别为本时隙完成、超时、拒绝的任务数，$H_n$为逐时隙实测边际寿命消耗，
-$P^Q_n$为队列压力，权重$(w_d, w_{to}, w_{re}, w_h, w_q) = (10, 5, 5, 2, 0.05)$。
-卫星$n$在时隙$t$的总奖励为 $R_n(t) = \sum_i r^{base,a_i}_n(i,t) + r^{\mathrm{shape}}_n(t)$，
-可按第~\ref{subsec:reward}~节的两层结构等价改写为 $R_n(t)=R^{\mathrm{obj}}_n(t)+R^{\mathrm{prior}}_n(t)$，其中
-\begin{equation}
-R^{\mathrm{obj}}_n(t) = 10 D_n(t) - 5 O_n(t) - 5 J_n(t) - 2\frac{H_n(t)}{H_{norm}},
-\quad
-R^{\mathrm{prior}}_n(t) = \sum_i r^{base,a_i}_n(i,t) - w_q P^Q_n(t),
-\label{eq:reward_twolayer}
-\end{equation}
-即 $R^{\mathrm{obj}}$ 汇集式\eqref{eq:reward_shape}中的结果型项（$\rho_H=w_h=2$），
-$R^{\mathrm{prior}}$ 汇集任务级 Lyapunov 启发边费用与队列压力辅助项。
-塑形项为辅助训练信号，其权重经验选取；本文不声称最大化该复合奖励等价于求解 P1 或使 MAPPO 收敛到最优策略。
-
-\subsubsection{网络结构}
-
-\textbf{Actor网络：}
-输入状态向量$s_n(t)$，
-输出可行动作上的概率分布（经动作掩码屏蔽不可行动作）：
-\begin{equation}
-\pi_\theta(a^i_n | s_n(t))
-\propto \exp(f_\theta(s_n(t)))
-\cdot \mathbf{1}[a \in \mathcal{A}^{feasible}_i]。
+\pi_\theta(a \mid s_n(t))
+= \frac{\exp\!\big(f_\theta(s_n(t))_a\big)\,\mathbf{1}[a \in \mathcal{A}^{\mathrm{feas}}_i]}
+{\sum_{a'\in\mathcal{A}^{\mathrm{feas}}_i}\exp\!\big(f_\theta(s_n(t))_{a'}\big)}.
 \label{eq:actor}
 \end{equation}
 
-\textbf{邻域Critic网络：}
-在Walker星座中，每颗卫星固定有4个邻居，
-邻居状态按前向、后向、左侧、右侧的固定顺序拼接：
+\noindent\textbf{邻域 Critic（仅训练期）。}
+在 Walker 星座中每颗卫星固定有 $|\mathcal{N}_n|$ 个邻居（本文为 $4$），邻居状态按前向、后向、
+左、右的固定顺序拼接。Critic 输入为
 \begin{equation}
-s^{critic}_n(t) = [s_n(t),\
-\{s_m(t)\}_{m \in \mathcal{N}_n},\ g(t)]。
+s^{\mathrm{critic}}_n(t) = \big[\,s_n(t),\ \{s_m(t)\}_{m \in \mathcal{N}_n},\ g(t)\,\big],
 \label{eq:critic_input}
 \end{equation}
-其中 $g(t)$ 为与星座规模无关的\emph{全局摘要统计量}
-（全网 DoD 的均值/标准差/最大值、平均转发与计算队列长度、
-平均寿命消耗、平均频率、平均光照状态及轨道相位等固定维度聚合量）。
-$g(t)$ 仅在训练阶段供 Critic 使用，执行阶段 Actor 不使用（保持分布式执行）。
+其中 $g(t)$ 为与星座规模无关的\emph{固定维度全局摘要}（全网 DoD 的均值/标准差/最大值、
+平均转发与计算队列长度、平均寿命消耗、平均频率、平均光照状态及轨道相位等固定维度聚合量）。
+$g(t)$ 仅在训练期供 Critic 使用以稳定价值估计，执行期 Actor 不使用（保持一跳分布式执行）。
 
-\textbf{参数更新：}
-Actor网络采用PPO截断目标：
+\noindent\textbf{折扣代理目标。}
+如第~\ref{subsec:problem}~节所述，实际优化的是 $\gamma$-折扣多智能体代理目标，作为 P1 长期时均代价的
+可优化代理。同一时隙内所有任务的奖励聚合为时隙级奖励
+$R_n(t) = \sum_{i \in \pi_n(t)} r^{\mathrm{base}}_n(i,t) + R^{\mathrm{obj}}_n(t) - w_q P^Q_n(t)$
+（等价于式\eqref{eq:reward_total}）。据此定义时序差分误差与 GAE 优势
 \begin{equation}
-L^{CLIP}(\theta) = \mathbb{E}\left[
-\min\left(r_t(\theta)\hat{A}_t,\
-\text{clip}(r_t(\theta), 1-\varepsilon, 1+\varepsilon)\hat{A}_t
-\right)
-\right] - \beta_{ent}\cdot H(\pi_\theta),
+\delta^{\mathrm{TD}}_t = R_n(t) + \gamma V_\phi(s^{\mathrm{critic}}_n(t\!+\!1))
+- V_\phi(s^{\mathrm{critic}}_n(t)),
+\qquad
+\hat{A}_t = \sum_{l=0}^{T-t-1}
+(\gamma\lambda_{\mathrm{GAE}})^l\,\delta^{\mathrm{TD}}_{t+l},
+\label{eq:gae}
+\end{equation}
+其中 $\gamma=0.99$，$\lambda_{\mathrm{GAE}}=0.95$。
+
+\noindent\textbf{时隙级信用分配（启发式，非标准逐动作 MAPPO）。}
+本文将时隙级优势 $\hat{A}_t$ \emph{共享}给该时隙内所有任务级动作，即同一 $\hat{A}_t$ 用于更新
+$\{\pi_\theta(a_i\mid s_n(t))\}_{i\in\pi_n(t)}$。这是一种启发式的时隙级信用分配，
+\textbf{不是}标准的逐动作 MAPPO 推导：由于槽内任务为顺序决策且共享临时状态，逐动作的``真实''优势本应
+不同，共享标量优势是其低方差代理，会引入偏差。本文将其作为\emph{方差--偏差折中}的工程选择；
+逐动作与时隙级信用分配的对比留作实验消融（第~\ref{sec:simulation}~节讨论）。
+
+\noindent\textbf{PPO 目标与 Critic 损失。}
+Actor 采用带熵正则的 PPO 截断\emph{最大化}目标
+\begin{equation}
+J^{\mathrm{CLIP}}(\theta) = \mathbb{E}\!\left[
+\min\!\big(r_t(\theta)\hat{A}_t,\
+\mathrm{clip}(r_t(\theta), 1-\varepsilon, 1+\varepsilon)\hat{A}_t\big)
+\right] + \beta_{\mathrm{ent}}\,\mathbb{E}\big[H(\pi_\theta)\big],
 \label{eq:ppo}
 \end{equation}
-其中$r_t(\theta) = \frac{\pi_\theta(a|s)}{\pi_{\theta_{old}}(a|s)}$
-为重要性采样比，$\hat{A}_t$为GAE优势估计，
-$\beta_{ent}=0.02$为熵正则系数，$\varepsilon=0.2$为截断参数。
-
-Critic网络采用均方误差损失：
+其中 $r_t(\theta) = \pi_\theta(a\mid s)/\pi_{\theta_{\mathrm{old}}}(a\mid s)$ 为重要性采样比，
+$\beta_{\mathrm{ent}}=0.02$，$\varepsilon=0.2$；熵项以\emph{加号}出现以鼓励探索。相应地训练时最小化
+$-J^{\mathrm{CLIP}}(\theta)$。Critic 采用均方误差损失
 \begin{equation}
-L(\phi) = \mathbb{E}\left[
-(V_\phi(s^{critic}_n(t)) - \hat{R}_t)^2
-\right]。
+L(\phi) = \mathbb{E}\!\left[
+\big(V_\phi(s^{\mathrm{critic}}_n(t)) - \hat{R}_t\big)^2
+\right],
+\qquad \hat{R}_t = V_\phi(s^{\mathrm{critic}}_n(t)) + \hat{A}_t.
 \label{eq:critic_loss}
 \end{equation}
 
-GAE按时隙顺序计算，
-同一时隙内所有任务的奖励聚合为时隙级奖励
-$R_n(t) = \sum_{i \in \pi_n(t)} r^i_n(t)$（该时隙级优势对同一时隙内所有任务共享，属启发式时隙级信用分配，而非标准逐动作 MAPPO 推导），
-时序差分误差：
-\begin{equation}
-\delta^{TD}_t = R_n(t) + \gamma V_\phi(s^{critic}_n(t+1))
-- V_\phi(s^{critic}_n(t)),
-\label{eq:td_error}
-\end{equation}
-GAE优势估计：
-\begin{equation}
-\hat{A}_t = \sum_{l=0}^{T-t-1}
-(\gamma\lambda_{GAE})^l\delta^{TD}_{t+l},
-\label{eq:gae}
-\end{equation}
-其中$\gamma=0.99$，$\lambda_{GAE}=0.95$。
+\subsection{在线执行与训练流程}
+\label{subsec:procedure}
 
-% ============================================================
-\subsection{设计说明}
-% ============================================================
-
-本文所提奖励为经验塑形设计：$R^{\mathrm{obj}}$ 提供与长期电池--服务目标相对应的时隙级结果信号，
-$R^{\mathrm{prior}}$ 利用队列差、DoD 边际老化和名义能源压力构造任务级稠密反馈。
-后者并非 P1 的严格漂移加惩罚分解，最大化复合奖励不保证获得 P1 的全局最优策略。
-此外，P1 以长期时间平均代价为优化目标，而 PPO/GAE 实际优化的是$\gamma=0.99$的折扣累计回报；
-折扣回报在此作为长期平均目标的可优化代理，二者并不严格等价。
-名义能源压力特征 $Z_n$ 仅为有限评估窗口内累计名义能源压力的经验状态特征
-（于每轨道周期起始复位），不承担长期能源约束或物理安全保证。
-所提方法的有效性主要通过第~\ref{sec:simulation}~节的经验对比与消融验证。
-
-% % ============================================================
-% \subsection{算法描述}
-% % ============================================================
-
-% \begin{algorithm}[H]
-% \caption{基于Lyapunov-MAPPO的星间调度（系统执行层）}
-% \label{alg:execution}
-% \begin{algorithmic}[1]
-% \REQUIRE 系统参数$N, K_{\max}, \theta_n, V, \eta, \tau$；
-%          网络参数$\theta, \phi$；
-%          初始状态$Q^F_n(0)=\theta_n$，$Q^B_n(0)=0$，
-%          $DoD_n(0)$，$Z_n(0)=0$
-% \ENSURE 每时隙调度决策序列
-
-% \FOR{每个训练回合}
-%     \STATE 清空回合缓冲区$\mathcal{D}$
-%     \FOR{每个时隙$t = 1, 2, \ldots, K$}
-
-%         \STATE \textbf{// Step1：控制面信息交换}
-%         \FOR{每颗卫星$n \in \mathcal{N}$}
-%             \STATE 通过控制面获取邻居状态
-%                    $\{Q^F_m(t), N^B_m(t), DoD_m(t)\}_{m \in \mathcal{N}_n}$
-%         \ENDFOR
-
-%         \STATE \textbf{// Step2：准入控制}
-%         \FOR{每颗卫星$n \in \mathcal{N}$}
-%             \FOR{每个新到达用户$i \in \mathcal{I}_n(t)$}
-%                 \IF{$N^F_n(t) \leq \theta_n$}
-%                     \STATE 接受任务，初始化
-%                            $\mathcal{R}^i = (0, 0)$
-%                            （$k^i=0$，$\Delta^i_{\mathrm{trans}}=0$）
-%                 \ELSE
-%                     \STATE 拒绝任务
-%                 \ENDIF
-%             \ENDFOR
-%         \ENDFOR
-
-%         \STATE \textbf{// Step3：调度决策}
-%         \FOR{每颗卫星$n \in \mathcal{N}$}
-%             \STATE \textbf{初始化时隙内临时状态：}
-%             \STATE $\hat{N}^B_n \leftarrow N^B_n(t)
-%                    - D_n(t) + \lfloor\bar{\alpha}_n\rfloor$
-%             \STATE $\hat{Z}_n \leftarrow Z_n(t)$
-%             \STATE 计算$V_\phi(s^{critic}_n(t))$，
-%                    存入时隙级记录
-%             \STATE 按$w^i_n(t)$升序排列：
-%                    $\pi_n(t) \leftarrow
-%                    \text{sort}(\mathcal{Q}^F_n(t),\ w^i_n(t)\text{升序})$
-%             \STATE 平局打破：按$s^i$升序
-
-%             \FOR{每个任务$i \in \pi_n(t)$}
-%                 \STATE 更新$w^i_n(t)$（见式\eqref{eq:w_remain}）
-%                 \IF{$w^i_n(t) \leq 0$}
-%                     \STATE 任务超时，从队列移除；\textbf{continue}
-%                 \ENDIF
-
-%                 \STATE \textbf{构建动作掩码：}
-%                 \STATE $\mathcal{A}^{feasible}_i \leftarrow \{local\}$
-%                 \FOR{$m \in \mathcal{N}_n$}
-%                     \IF{$k^i < K_{\max}$}
-%                         \STATE 计算$\hat{d}^{i,C}_m$
-%                                （用$N^B_m(t)+1$，见式\eqref{eq:est_comp_delay}）
-%                         \IF{$\frac{s^i}{b_{nm}} + T_{nm}
-%                             + \hat{d}^{i,C}_m
-%                             \leq w^i_n(t)$}
-%                             \STATE $\mathcal{A}^{feasible}_i \leftarrow
-%                                    \mathcal{A}^{feasible}_i \cup \{m\}$
-%                         \ENDIF
-%                     \ENDIF
-%                 \ENDFOR
-
-%                 \STATE \textbf{构建状态输入}$s_n(t)$（见式\eqref{eq:state}）
-%                 \STATE \textbf{Actor输出动作：}
-%                        $a^i_n(t) \leftarrow \pi_\theta(\cdot|s_n(t))$
-%                        经$\mathcal{A}^{feasible}_i$掩码
-
-%                 \IF{$a^i_n(t) = local$}
-%                     \STATE 计算$\Delta DoD^{i,\mathrm{comp}}_n(\hat{N}^B_n+1)$，
-%                            $\Delta\mathcal{L}^{i,\mathrm{comp}}_n$
-%                     \STATE 计算奖励$r^i_n(t) =
-%                            -\bar{c}^{local}_n(i,t)$
-%                     \STATE 更新临时状态：
-%                            $\hat{N}^B_n \leftarrow \hat{N}^B_n + 1$；
-%                            $\hat{Z}_n \leftarrow \hat{Z}_n
-%                            + \Delta DoD^{i,\mathrm{comp}}_n$
-%                 \ELSE[$a^i_n(t) = m$，转发给邻居$m$]
-%                     \STATE 计算$\Delta DoD^{i,\mathrm{trans}}_n$，
-%                            $\Delta\mathcal{L}^{i,\mathrm{trans}}_n$
-%                     \STATE 计算奖励$r^i_n(t) =
-%                            -\bar{c}^{offload}_{nm}(i,t)$
-%                     \STATE 更新运行时状态：
-%                            $k^i \leftarrow k^i + 1$；
-%                            $\Delta^i_{\mathrm{trans}} \leftarrow
-%                            \Delta^i_{\mathrm{trans}} + s^i/b_{nm} + T_{nm}$
-%                     \STATE 更新临时状态：
-%                            $\hat{Z}_n \leftarrow \hat{Z}_n
-%                            + \Delta DoD^{i,\mathrm{trans}}_n$
-%                 \ENDIF
-
-%                 \STATE 存入任务级记录：
-%                        $(s_n(t),\ a^i_n(t),\ r^i_n(t),\ t)$
-%             \ENDFOR
-
-%             \STATE 聚合时隙级奖励：
-%                    $R_n(t) \leftarrow \sum_{i \in \pi_n(t)} r^i_n(t)$
-%         \ENDFOR
-
-%         \STATE \textbf{// Step4：任务处理与状态更新}
-%         \FOR{每颗卫星$n \in \mathcal{N}$}
-%             \FOR{每个任务$i \in \mathcal{Q}^B_n(t)$}
-%                 \STATE 按式\eqref{eq:workload}计算$r^i_n(t)$
-%                 \IF{任务$i$处理完成}
-%                     \STATE 从$Q^B_n$移除
-%                 \ENDIF
-%             \ENDFOR
-%             \STATE 更新$Q^F_n(t+1)$，$Q^B_n(t+1)$，
-%                    $DoD_n(t+1)$，$Z_n(t+1)$
-%             \STATE 更新滑动平均：
-%                    $\bar{\alpha}_n \leftarrow
-%                    (1-\mu)\bar{\alpha}_n
-%                    + \mu\alpha^{num}_n(t)$
-%         \ENDFOR
-
-%         \STATE \textbf{// Step5：网络参数更新}
-%         \IF{$t \bmod K = 0$}
-%             \STATE 计算$V_\phi(s^{critic}_n(t+1))$作为bootstrap值
-%             \STATE 调用算法~\ref{alg:training}更新网络参数
-%             \STATE 清空回合缓冲区$\mathcal{D}$
-%         \ENDIF
-
-%     \ENDFOR
-% \ENDFOR
-% \end{algorithmic}
-% \end{algorithm}
-
+在线执行流程见算法~\ref{alg:execution}，网络参数更新见算法~\ref{alg:training}；二者符号一致、互相引用。
+算法~\ref{alg:execution} 在每个时隙完成准入、一跳邻域状态交换、EDF 排序、掩码构造、逐任务采样与
+临时状态更新，并推进环境的计算、传输、DoD 与完成/超时统计；算法~\ref{alg:training} 在每个 rollout
+结束时以时隙级 $\hat{A}_t$ 做启发式信用分配并执行 PPO 更新。
 
 \begin{algorithm}[t]
-\caption{MAPPO网络参数更新（训练层）}
-\label{alg:training}
+\caption{在线执行（单 rollout，分布式执行）}
+\label{alg:execution}
 \begin{algorithmic}[1]
-\REQUIRE 回合缓冲区$\mathcal{D}$；
-         Actor参数$\theta$，Critic参数$\phi$；
-         超参数$E=2$，minibatch$=64$，
-         $\gamma=0.99$，$\lambda_{GAE}=0.95$，
-         $\varepsilon=0.2$，$\beta_{ent}=0.02$
-\ENSURE 更新后的$\theta$，$\phi$
-
-\STATE \textbf{// Step1：计算GAE优势估计（从后向前）}
-\FOR{每颗卫星$n \in \mathcal{N}$}
-    \STATE $\hat{A}_{K+1} \leftarrow 0$
-    \FOR{$t = K, K-1, \ldots, 1$}
-        \STATE $\delta^{TD}_t \leftarrow R_n(t)
-               + \gamma V_\phi(s^{critic}_n(t+1))
-               - V_\phi(s^{critic}_n(t))$
-        \STATE $\hat{A}_t \leftarrow \delta^{TD}_t
-               + \gamma\lambda_{GAE}\hat{A}_{t+1}$
-        \STATE $\hat{R}_t \leftarrow V_\phi(s^{critic}_n(t))
-               + \hat{A}_t$
-        \STATE 将$\hat{A}_t$填入时隙$t$所有任务的任务级记录（启发式时隙级信用分配，非标准逐动作 MAPPO 推导）
+\REQUIRE Actor 参数 $\theta$，Critic 参数 $\phi$；系统参数 $N,K_{\max},\theta_n,V,\eta,\tau$
+\ENSURE 逐时隙决策与经验记录，写入缓冲区 $\mathcal{D}$
+\FOR{每个时隙 $t=1,2,\ldots,K$}
+  \FORALL{卫星 $n \in \mathcal{N}$}
+    \STATE \textbf{// 一跳邻域状态交换}
+    \STATE 经控制面获取 $\{b_{nm},T_{nm},\tilde{Q}^F_m,N^B_m,DoD_m\}_{m\in\mathcal{N}_n}$
+    \STATE \textbf{// 准入控制（式\eqref{eq:admission}）}
+    \FORALL{新到达任务 $i \in \mathcal{I}_n(t)$}
+      \STATE 若 $N^F_n(t)\le\theta_n$ 则接受并置 $\mathcal{R}^i=(k^i{=}0,\Delta^i_{\mathrm{trans}}{=}0)$，否则拒绝（$J_n{+}{=}1$）
     \ENDFOR
-\ENDFOR
-
-\STATE \textbf{优势估计归一化：}
-\STATE $\hat{A}_{all} \leftarrow
-       (\hat{A}_{all} - \text{mean}(\hat{A}_{all}))
-       / (\text{std}(\hat{A}_{all}) + 10^{-8})$
-
-\STATE \textbf{// Step2：多轮梯度更新}
-\STATE $\theta_{old} \leftarrow \theta$
-\FOR{$\text{epoch} = 1, 2, \ldots, E$}
-    \STATE 随机打乱时隙级记录和任务级记录
-    \FOR{每个minibatch $\mathcal{B} \subseteq \mathcal{D}$}
-        \STATE 更新Critic：
-               $L(\phi) = \frac{1}{|\mathcal{B}^{critic}|}
-               \sum(V_\phi(s^{critic}_n(t)) - \hat{R}_t)^2$；
-               $\phi \leftarrow \phi - \alpha_{critic}\cdot\nabla_\phi L(\phi)$
-        \STATE 计算$r_t(\theta) =
-               \pi_\theta(a^i_n|s_n(t))
-               / \pi_{\theta_{old}}(a^i_n|s_n(t))$
-        \STATE 更新Actor：
-               $L(\theta) = -\frac{1}{|\mathcal{B}^{actor}|}
-               \sum\min(r_t(\theta)\hat{A}_t,\
-               \text{clip}(r_t(\theta),
-               1-\varepsilon, 1+\varepsilon)\hat{A}_t)
-               - \beta_{ent}\cdot H(\pi_\theta)$；
-               $\theta \leftarrow \theta - \alpha_{actor}\cdot\nabla_\theta L(\theta)$
+    \STATE \textbf{// 初始化时隙内临时状态}
+    \STATE $\hat{N}^B_n \leftarrow N^B_n(t)$；\ $\hat{Z}_n \leftarrow Z_n(t)$；\ 记录 $V_\phi(s^{\mathrm{critic}}_n(t))$
+    \STATE 按 $w^i_n(t)$ 升序、$s^i$ 升序打破平局，得决策顺序 $\pi_n(t)$（EDF）
+    \FORALL{任务 $i \in \pi_n(t)$}
+      \STATE 更新 $w^i_n(t)$（式\eqref{eq:w_remain}）
+      \IF{$w^i_n(t) \le 0$}
+        \STATE 任务超时并移除（$O_n{+}{=}1$）；\textbf{continue}
+      \ENDIF
+      \STATE 构造可行集 $\mathcal{A}^{\mathrm{feas}}_i$（式\eqref{eq:feasible_actions}，转发用 $\hat{d}^{i,C}_m$ 式\eqref{eq:est_comp_delay}）
+      \IF{$\mathcal{A}^{\mathrm{feas}}_i = \varnothing$}
+        \STATE 被动保留至下一时隙（非策略动作）；\textbf{continue}
+      \ENDIF
+      \STATE 由 Actor 采样 $a^i_n(t)\sim\pi_\theta(\cdot\mid s_n(t))$（式\eqref{eq:actor}）
+      \IF{$a^i_n(t)=local$}
+        \STATE 计算 $\widehat{\Delta DoD}^{i,\mathrm{comp}}_n,\ \Delta\mathcal{L}^{i,\mathrm{comp}}_n$；\ $r^{\mathrm{base}}_n(i,t)=-\bar{c}^{\,local}_n(i,t)$
+        \STATE $\hat{N}^B_n \leftarrow \hat{N}^B_n+1$；\ $\hat{Z}_n \leftarrow \hat{Z}_n+\widehat{\Delta DoD}^{i,\mathrm{comp}}_n$
+      \ELSE
+        \STATE 转发给邻居 $m=a^i_n(t)$；\ $r^{\mathrm{base}}_n(i,t)=-\bar{c}^{\,offload}_{nm}(i,t)$
+        \STATE $k^i \leftarrow k^i+1$；\ $\Delta^i_{\mathrm{trans}} \leftarrow \Delta^i_{\mathrm{trans}}+s^i/b_{nm}+T_{nm}$
+        \STATE $\hat{Z}_n \leftarrow \hat{Z}_n+\widehat{\Delta DoD}^{i,\mathrm{trans}}_{n\to m}$
+      \ENDIF
+      \STATE 存任务级记录 $(s_n(t),a^i_n(t),r^{\mathrm{base}}_n(i,t),t)$ 入 $\mathcal{D}$
     \ENDFOR
+  \ENDFOR
+  \STATE \textbf{// 环境推进（时隙末）}
+  \FORALL{卫星 $n \in \mathcal{N}$}
+    \STATE 按式\eqref{eq:f_cmp}选频、式\eqref{eq:processed_workload}处理计算队列，完成任务离开系统（$D_n$ 累加）
+    \STATE 转发/本地分发落队，更新 $Q^F_n(t\!+\!1),Q^{B,\mathrm{bit}}_n(t\!+\!1)$（式\eqref{eq:QF_update}\eqref{eq:QB_update}）
+    \STATE 更新 $DoD_n(t\!+\!1)$（式\eqref{eq:dod_dynamics}）、$Z_n(t\!+\!1)$（式\eqref{eq:virtual_queue}）
+    \STATE 计 $H_n(t)$（式\eqref{eq:H_slot}）；聚合时隙级奖励 $R_n(t)$（式\eqref{eq:reward_total}）入 $\mathcal{D}$
+  \ENDFOR
 \ENDFOR
-
-\STATE $\theta_{old} \leftarrow \theta$
 \end{algorithmic}
 \end{algorithm}
+
+\begin{algorithm}[t]
+\caption{MAPPO 网络参数更新（训练层）}
+\label{alg:training}
+\begin{algorithmic}[1]
+\REQUIRE 缓冲区 $\mathcal{D}$；参数 $\theta,\phi$；$E{=}2$，minibatch${=}64$，$\gamma{=}0.99$，$\lambda_{\mathrm{GAE}}{=}0.95$，$\varepsilon{=}0.2$，$\beta_{\mathrm{ent}}{=}0.02$
+\ENSURE 更新后的 $\theta,\phi$
+\STATE $\theta_{\mathrm{old}} \leftarrow \theta$（冻结采样策略）
+\STATE \textbf{// Step 1：时隙级 GAE（从后向前）}
+\FORALL{卫星 $n \in \mathcal{N}$}
+  \STATE $\hat{A}_{K+1} \leftarrow 0$
+  \FOR{$t=K,K-1,\ldots,1$}
+    \STATE $\delta^{\mathrm{TD}}_t \leftarrow R_n(t) + \gamma V_\phi(s^{\mathrm{critic}}_n(t\!+\!1)) - V_\phi(s^{\mathrm{critic}}_n(t))$
+    \STATE $\hat{A}_t \leftarrow \delta^{\mathrm{TD}}_t + \gamma\lambda_{\mathrm{GAE}}\hat{A}_{t+1}$；\ $\hat{R}_t \leftarrow V_\phi(s^{\mathrm{critic}}_n(t)) + \hat{A}_t$
+    \STATE 将 $\hat{A}_t$ 填入时隙 $t$ 内\emph{所有}任务级记录（启发式时隙级信用分配）
+  \ENDFOR
+\ENDFOR
+\STATE 优势归一化：$\hat{A} \leftarrow (\hat{A}-\mathrm{mean}(\hat{A}))/(\mathrm{std}(\hat{A})+10^{-8})$
+\STATE \textbf{// Step 2：多轮 minibatch 更新}
+\FOR{$\mathrm{epoch}=1,\ldots,E$}
+  \STATE 打乱时隙级与任务级记录
+  \FORALL{minibatch $\mathcal{B}\subseteq\mathcal{D}$}
+    \STATE 更新 Critic：最小化 $\frac{1}{|\mathcal{B}|}\sum(V_\phi(s^{\mathrm{critic}}_n(t))-\hat{R}_t)^2$（式\eqref{eq:critic_loss}）
+    \STATE $r_t(\theta) \leftarrow \pi_\theta(a^i_n\mid s_n(t))/\pi_{\theta_{\mathrm{old}}}(a^i_n\mid s_n(t))$
+    \STATE 更新 Actor：最小化 $-J^{\mathrm{CLIP}}(\theta)$（式\eqref{eq:ppo}）
+  \ENDFOR
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{复杂度与可扩展性}
+\label{subsec:complexity}
+
+\noindent\textbf{在线执行复杂度。}
+设 $F_n=|\mathcal{Q}^F_n(t)|$ 为转发队列任务数，$\Delta=\max_n|\mathcal{N}_n|$ 为最大邻居数
+（Walker 星座中为常数 $4$），$C_\pi$ 为 Actor 单次前向代价（网络结构固定，$C_\pi$ 为常数）。
+每颗卫星每时隙的决策代价为 EDF 排序 $O(F_n\log F_n)$ 加逐任务掩码 $O(\Delta)$ 与前向 $O(C_\pi)$，
+即 $O\big(F_n(\log F_n + \Delta + C_\pi)\big)=O\big(F_n(\log F_n + C_\pi)\big)$，\emph{与 $N$ 无关}。
+全星座每时隙总在线代价为 $O\big(\sum_{n} F_n(\log F_n + C_\pi)\big)$，随 $N$ 线性增长且完全分布式。
+
+\noindent\textbf{训练复杂度。}
+单个 rollout 长度为 $K$、智能体数为 $N$，GAE 反传为 $O(NK)$；每轮 PPO 更新遍历经验一次，
+代价 $O\big(E\,N\,K\,(C_\pi+C_V)\big)$，$C_V$ 为 Critic 前向代价（常数）。Critic 输入维度为
+$O\big(\Delta\cdot d_{\mathrm{sat}} + d_g\big)$（$d_{\mathrm{sat}}$ 为单星特征维度，$d_g$ 为全局摘要维度），
+在 Walker 星座下\emph{与 $N$ 无关}。
+
+\noindent\textbf{可扩展性（审慎表述）。}
+由于（i）执行仅用一跳邻域、邻居数 $\Delta$ 在 Walker 星座为常数，Actor 观测维度 $O(\Delta)$ 不随 $N$ 增长；
+（ii）参数共享使 $|\theta|,|\phi|$ 与 $N$ 无关；（iii）Critic 输入为固定维度（邻域 $+$ 固定维度全局摘要），
+故\emph{单星决策代价与模型规模均不随 $N$ 增长}，总在线代价随 $N$ 线性扩展。需要说明，本文\textbf{不}声称
+严格的 scale-invariance：训练期全局摘要 $g(t)$ 虽为固定维度，其\emph{计算}需聚合全网 $N$ 个节点的标量
+（每时隙 $O(N)$）；但 $g(t)$ 仅用于训练、执行期不需要，故执行始终保持一跳、每星观测维度为 $O(1)$（关于 $N$）。
+
+\subsection{设计说明}
+\label{subsec:design_note}
+
+本文所提奖励为经验塑形设计：$R^{\mathrm{obj}}$ 提供与长期电池--服务目标对应的时隙级结果信号，
+$R^{\mathrm{prior}}$ 以队列差、DoD 边际老化与名义能源压力构造任务级稠密反馈。归纳本节的可 defend 边界：
+（1）$R^{\mathrm{prior}}$ 是 Lyapunov-\emph{inspired} 的 dense prior，并非 P1 的严格漂移加惩罚分解，
+最大化复合奖励\textbf{不}保证获得 P1 全局最优策略，也\textbf{不}保证 MAPPO 收敛到最优；
+（2）P1 以长期时均代价为目标，而 PPO/GAE 优化 $\gamma{=}0.99$ 折扣回报，二者为代理关系、并不严格等价；
+（3）DoD 区间投影（式\eqref{eq:dod_dynamics}）为建模有界性近似而非电源物理硬约束，名义能源赤字特征
+$Z_n$ 为有限窗口内的经验状态特征（每轨道周期复位），\textbf{不}承担长期能源约束或物理安全保证；
+（4）队列稳定性在本文中作为\emph{经验评估指标}报告，而非理论保证；
+（5）所报告的寿命消耗为给定 DoD--寿命经验关系下的\emph{相对}调度指标，而非对绝对在轨寿命的预测。
+换言之，本文不主张严格的 Lyapunov 最优性；该先验的价值在于编码领域知识、提升样本效率与缓解信用分配困难，
+其有效性由第~\ref{sec:simulation}~节的经验对比与消融验证。
 
 % ============================================================
 \section{仿真结果}
