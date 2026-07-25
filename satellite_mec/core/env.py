@@ -251,7 +251,7 @@ class SatelliteMECEnv(EnvInterface):
 
         # 8. Outcome-aware reward 注入 + reward ledger 记录组成
         #    ledger 总是计算（包括 eval 阶段），方便诊断；reward 注入仅训练阶段生效
-        ledger = {'done': 0.0, 'timeout': 0.0, 'reject': 0.0, 'hl': 0.0, 'queue': 0.0}
+        ledger = {'done': 0.0, 'timeout': 0.0, 'reject': 0.0, 'hl': 0.0, 'queue': 0.0, 'dod': 0.0}
         for sat in sats:
             n = sat.sat_id
             queue_pressure = (sat.qf_size + sat.qb_size) / max(cfg.QUEUE_NORM, 1.0)
@@ -260,13 +260,15 @@ class SatelliteMECEnv(EnvInterface):
             r_reject  = - cfg.W_REJECT  * rejected_per_sat[n]
             r_hl      = - cfg.W_HL      * sat.slot_health_loss / max(cfg.HL_NORM, 1e-12)
             r_queue   = - cfg.W_QUEUE   * queue_pressure
+            r_dod     = - cfg.W_DOD     * sat.dod        # MADRL-DoD: 罚 DoD 存量 δ（默认 W_DOD=0 无影响）
             if self.phase == 'train':
-                rewards[n] += r_done + r_timeout + r_reject + r_hl + r_queue
+                rewards[n] += r_done + r_timeout + r_reject + r_hl + r_queue + r_dod
             ledger['done']    += r_done
             ledger['timeout'] += r_timeout
             ledger['reject']  += r_reject
             ledger['hl']      += r_hl
             ledger['queue']   += r_queue
+            ledger['dod']     += r_dod
         # 已经在 step 内累加进 rewards 的"action_cost"（来自 sat.apply_action 返回的 −Lyapunov_cost）
         # 这里再做一次汇总，避免重复计算时把 reward 整体丢失
         ledger['action_cost'] = float(sum(rewards.values())) - sum(ledger.values()) \

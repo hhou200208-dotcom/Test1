@@ -59,6 +59,11 @@ def parse_args():
     p.add_argument('--dod_only', action='store_true',
                    help='LyDRL-DoD(MAPPO): 保留 DoD 虚拟队列惩罚，关掉电池半衰期 L\'(δ) 项 '
                         '(use_battery_loss=False, W_HL=0)。与 LyaMAPPO 仅差 HL-择时项。')
+    p.add_argument('--madrl_dod', action='store_true',
+                   help='MADRL-DoD: 在 MAPPO 学习器上优化「服务满意度 + 平均DoD(δ存量)」，'
+                        '无 HL/L\'(δ) 择时。用 --w_dod 调 DoD↔满意度权衡。')
+    p.add_argument('--w_dod', type=float, default=None,
+                   help='MADRL-DoD 的 DoD 存量惩罚权重 W_DOD（sweep 主对象）')
     p.add_argument('--skip_baselines', action='store_true',
                    help='只跑 MAPPO 训练+评估，跳过 4 baseline（诊断加速用）')
     p.add_argument('--tag',      type=str, default='', help='额外标识，加入结果目录名')
@@ -79,6 +84,7 @@ def make_config(lh: float, args) -> Config:
     if args.w_timeout is not None: cfg.W_TIMEOUT  = args.w_timeout
     if args.w_reject is not None: cfg.W_REJECT    = args.w_reject
     if args.v        is not None: cfg.V           = args.v
+    if args.w_dod    is not None: cfg.W_DOD       = args.w_dod
     return cfg
 
 
@@ -100,6 +106,7 @@ def main():
 
     mappo_name = ('MAPPO_NoBat' if args.no_battery
                   else 'LyDRL_DoD' if args.dod_only
+                  else 'MADRL_DoD' if args.madrl_dod
                   else 'MAPPO')
     if args.skip_baselines:
         policy_names = [mappo_name]
@@ -118,6 +125,11 @@ def main():
         lyapunov_default = LyapunovCalculator(cfg, use_battery_loss=False, use_dod_penalty=True)
         cfg.W_HL = 0.0
         logger.info("[LyDRL-DoD/MAPPO] DoD 惩罚 ON，电池半衰期项 OFF + W_HL=0")
+    elif args.madrl_dod:
+        # MADRL-DoD: 纯 outcome 奖励 = W_DONE·满意度 − W_DOD·δ，无任何 Lyapunov 电池/HL/L'(δ) 项
+        lyapunov_default = LyapunovCalculator(cfg, use_battery_loss=False, use_dod_penalty=False)
+        cfg.W_HL = 0.0
+        logger.info(f"[MADRL-DoD] 目标=满意度+平均DoD，W_DOD={cfg.W_DOD}，W_HL=0，无 L'(δ) 择时")
     else:
         lyapunov_default = LyapunovCalculator(cfg)
 

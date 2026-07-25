@@ -94,6 +94,7 @@ class Config:
     W_TIMEOUT: float = 3.0                              # 每超时 1 个任务的惩罚
     W_REJECT:  float = 3.0                              # 每拒收 1 个任务的惩罚
     W_HL:      float = 10.0                             # 健康损失惩罚权重
+    W_DOD:     float = 0.0                              # MADRL-DoD: DoD 存量 δ_n 惩罚权重（默认0，不影响 LyaMAPPO）
     W_QUEUE:   float = 0.05                             # 队列压力惩罚权重
     HL_NORM:   float = 1e-4                             # HL 归一化（典型 slot 量级）
     QUEUE_NORM: float = 0.0                             # 队列归一化（运行时填充为 Q_F_MAX）
