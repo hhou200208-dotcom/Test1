@@ -67,6 +67,7 @@ def parse_args():
     p.add_argument('--skip_baselines', action='store_true',
                    help='只跑 MAPPO 训练+评估，跳过 4 baseline（诊断加速用）')
     p.add_argument('--tag',      type=str, default='', help='额外标识，加入结果目录名')
+    p.add_argument('--run_name', type=str, default='', help='覆盖策略/checkpoint 名（仅提供时生效，不影响默认路径）')
     return p.parse_args()
 
 
@@ -108,6 +109,8 @@ def main():
                   else 'LyDRL_DoD' if args.dod_only
                   else 'MADRL_DoD' if args.madrl_dod
                   else 'MAPPO')
+    if args.run_name:
+        mappo_name = args.run_name
     if args.skip_baselines:
         policy_names = [mappo_name]
     else:
