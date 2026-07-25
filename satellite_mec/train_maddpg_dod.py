@@ -36,16 +36,23 @@ def main():
     ap.add_argument('--tag', type=str, default='32K')
     ap.add_argument('--expl_noise', type=float, default=0.2)
     ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--w_done', type=float, default=None,
+                    help='override completion-reward weight (default: config 5.0). '
+                         'Lower (e.g. 1.0) drops into the low-throughput attractor '
+                         'for the throughput-HL trade-off frontier.')
     args = ap.parse_args()
 
     cfg = make_cfg(4.0)
+    if args.w_done is not None:
+        cfg.W_DONE = args.w_done
     env = SatelliteMECEnv(cfg)
     # DoD-aware 但无 HL 的物理基底（忠实论文:优化 DoD,不优化 HL 半衰期）
     env.lyapunov_calc = LyapunovCalculator(cfg, use_dod_penalty=True, use_battery_loss=False)
 
     maddpg = MADDPGDoDPolicy(cfg, env, expl_noise=args.expl_noise, seed=args.seed)
     print(f'[MADDPG-DoD] 训练 {args.t_train} 槽, λ=4, 公平起跑线(env奖励+完成激励, '
-          f'DoD-aware 无HL), critic={maddpg.c_dim}维, eval_every={args.eval_every}', flush=True)
+          f'DoD-aware 无HL), W_DONE={cfg.W_DONE}, critic={maddpg.c_dim}维, '
+          f'eval_every={args.eval_every}', flush=True)
 
     path = f'checkpoints/MADDPG_DoD_lh4_{args.tag}'
     best_cr = -1.0; best_step = -1; saved = False

@@ -39,6 +39,8 @@ def run(pol, label):
     return agg
 
 print(f"=== MADDPG-DoD vs LyaMAPPO, n={N_SEEDS} seeds, T_EVAL={cfg.T_EVAL} ===", flush=True)
-md = MADDPGDoDPolicy(cfg, env); md.load('checkpoints/MADDPG_DoD_lh4_32K'); run(md, 'LyDRL-DoD')
+md_ckpt = sys.argv[2] if len(sys.argv) > 2 else 'checkpoints/MADDPG_DoD_lh4_32K'
+print(f"(MADDPG ckpt: {md_ckpt})", flush=True)
+md = MADDPGDoDPolicy(cfg, env); md.load(md_ckpt); run(md, 'LyDRL-DoD')
 ly = MAPPOPolicy(cfg, name='LyaMAPPO'); ly.load('checkpoints/LyaMAPPO_lh4_32K'); run(ly, 'LyaMAPPO')
 print("DONE", flush=True)
