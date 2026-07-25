@@ -56,6 +56,9 @@ def parse_args():
                    help='Lyapunov V trade-off override (default 50)')
     p.add_argument('--no_battery', action='store_true',
                    help='Ablation A2: 移除 reward 里的电池信号 (Lyapunov 电池项 + W_HL=0)，state 保留')
+    p.add_argument('--dod_only', action='store_true',
+                   help='LyDRL-DoD(MAPPO): 保留 DoD 虚拟队列惩罚，关掉电池半衰期 L\'(δ) 项 '
+                        '(use_battery_loss=False, W_HL=0)。与 LyaMAPPO 仅差 HL-择时项。')
     p.add_argument('--skip_baselines', action='store_true',
                    help='只跑 MAPPO 训练+评估，跳过 4 baseline（诊断加速用）')
     p.add_argument('--tag',      type=str, default='', help='额外标识，加入结果目录名')
@@ -95,7 +98,9 @@ def main():
     logger.info(f"BETA={cfg.BETA}, W_DONE={cfg.W_DONE}, W_TIMEOUT={cfg.W_TIMEOUT}, "
                 f"W_REJECT={cfg.W_REJECT}, W_HL={cfg.W_HL}, W_QUEUE={cfg.W_QUEUE}")
 
-    mappo_name = 'MAPPO_NoBat' if args.no_battery else 'MAPPO'
+    mappo_name = ('MAPPO_NoBat' if args.no_battery
+                  else 'LyDRL_DoD' if args.dod_only
+                  else 'MAPPO')
     if args.skip_baselines:
         policy_names = [mappo_name]
     else:
@@ -108,6 +113,11 @@ def main():
         lyapunov_default = LyapunovCalculator(cfg, use_battery_loss=False, use_dod_penalty=False)
         cfg.W_HL = 0.0
         logger.info("[ABLATION] no_battery: Lyapunov 电池项关闭 + W_HL=0")
+    elif args.dod_only:
+        # LyDRL-DoD(MAPPO): 保留 DoD 惩罚，关掉电池半衰期 L'(δ) 项（与 LyaMAPPO 仅差 HL-择时）
+        lyapunov_default = LyapunovCalculator(cfg, use_battery_loss=False, use_dod_penalty=True)
+        cfg.W_HL = 0.0
+        logger.info("[LyDRL-DoD/MAPPO] DoD 惩罚 ON，电池半衰期项 OFF + W_HL=0")
     else:
         lyapunov_default = LyapunovCalculator(cfg)
 
