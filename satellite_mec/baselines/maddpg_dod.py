@@ -142,6 +142,8 @@ class MADDPGDoDPolicy(PolicyInterface):
                  batch_size: int = 256, start_steps: int = 2000,
                  updates_per_slot: int = 1, replay_size: int = 1_000_000,
                  reward_scale: float = 0.1,
+                 zhong_reward: bool = False, upsilon: Optional[float] = None,
+                 zw_q: float = 1.0, zw_y: float = 1.0,
                  seed: int = 0, name: str = 'MADDPG_DoD'):
         self.cfg = config; self.env = env; self.name = name
         self.device = torch.device('cpu')
@@ -167,6 +169,12 @@ class MADDPGDoDPolicy(PolicyInterface):
         self.anneal_slots = anneal_slots; self.expl_noise = expl_noise
         self.batch_size = batch_size; self.start_steps = start_steps
         self.updates_per_slot = updates_per_slot; self.reward_scale = reward_scale
+        # Zhong 忠实 reward (eq41) 状态
+        self.zhong_reward = zhong_reward
+        self.upsilon = float(upsilon) if upsilon is not None else float(getattr(config, 'UPSILON', 1.0))
+        self.zw_q = float(zw_q); self.zw_y = float(zw_y)
+        self._Y: Dict[int, float] = {}       # 时延虚拟队列 Y_n
+        self._prevQ: Dict[int, float] = {}   # 上一槽队列(bytes)，算 l_n = Q_now - Q_prev
 
         self._eval_mode = False
         self._env_steps = 0
@@ -230,20 +238,31 @@ class MADDPGDoDPolicy(PolicyInterface):
         self._slot_tasks.append((np.asarray(state, np.float32), cobs, a_onehot,
                                  np.asarray(mask, np.float32), float(task_reward), int(sat_id)))
 
-    def _flush_slot(self, rewards: Dict, done: bool) -> None:
-        """把本槽任务的 reward 补成 action_cost + 分摊的 slot outcome,串成每任务转移入回放。
+    def _flush_slot(self, rewards: Dict, done: bool, info: Optional[Dict] = None) -> None:
+        """把本槽任务串成每任务转移入回放。
 
-        env(phase='train') 已把 outcome（完成/超时/拒绝/队列；W_HL=0 无 HL）注入 rewards[n]，
-        故 outcome_n = rewards[n] − Σ action_cost_n，按该星本槽任务数均摊回每个任务（同 TD3-Sched）。
+        默认口径: r = action_cost + 分摊 outcome(rewards[n] − Σaction_cost, 按任务数均摊)。
+        Zhong 口径(zhong_reward=True): 无视 env outcome/action_cost, 用忠实 eq41 的
+        per-slot per-sat reward −(Q·l + Y·(T−Tmax) + υ·D) 分摊到该星本槽任务。
         """
         if not self._slot_tasks:
             return
-        sum_cost: Dict[int, float] = {}; count: Dict[int, int] = {}
-        for (_, _, _, _, ac, n) in self._slot_tasks:
-            sum_cost[n] = sum_cost.get(n, 0.0) + ac; count[n] = count.get(n, 0) + 1
-        outcome = {n: float(rewards.get(n, 0.0)) - sum_cost[n] for n in count}
+        count: Dict[int, int] = {}
+        for (_, _, _, _, _, n) in self._slot_tasks:
+            count[n] = count.get(n, 0) + 1
+        if self.zhong_reward and info is not None:
+            r_sat = self._zhong_slot_reward(info, count)
+            per_task = {n: r_sat[n] / max(count[n], 1) for n in count}
+        else:
+            sum_cost: Dict[int, float] = {}
+            for (_, _, _, _, ac, n) in self._slot_tasks:
+                sum_cost[n] = sum_cost.get(n, 0.0) + ac
+            outcome = {n: float(rewards.get(n, 0.0)) - sum_cost[n] for n in count}
         for (s, cobs, a, mask, ac, n) in self._slot_tasks:
-            r = (ac + outcome[n] / max(count[n], 1)) * self.reward_scale
+            if self.zhong_reward and info is not None:
+                r = per_task[n] * self.reward_scale
+            else:
+                r = (ac + outcome[n] / max(count[n], 1)) * self.reward_scale
             if self._pending is not None:            # 上一条 pending 的 s'/cobs'/mask' = 当前任务
                 ps, pc, pa, pr = self._pending
                 self.replay.add(ps, pc, pa, pr, s, cobs, mask, 0.0)
@@ -257,6 +276,44 @@ class MADDPGDoDPolicy(PolicyInterface):
             self._env_steps += 1
             self._pending = None
 
+    def _zhong_slot_reward(self, info: Dict, count: Dict[int, int]) -> Dict[int, float]:
+        """Zhong eq41 逐槽逐星 reward: r_n = −(zw_q·Q̂·l̂ + zw_y·Ŷ·excesŝ + υ·D̂)。
+
+        映射(→ 我们的 env):
+          Q_n  = qf_size+qb_size(bytes);   l_n = Q_now − Q_prev(逐槽变化, =arrival−departure)
+          Y_n  = max(Y + (delay_mean − Tmax), 0)(时延虚拟队列, 仅本槽有完成时更新)
+          D_n  = (comp+trans 能耗)/E_CAP(每槽放电流量, 即 Zhong 的 DoD)
+        归一化: Q̂=Q/QUEUE_NORM, l̂=l/ZHONG_L_NORM, D̂=D/DELTA_DOD_MAX, 时延项按 Tmax 无量纲。
+        吞吐由 −Q·l 队列漂移驱动(热点星积压大→强烈奖励卸载/清队), υ 单调控 DoD; 无 W_DONE。
+        """
+        cfg = self.cfg
+        Q  = info.get('per_sat_queue', [])
+        E  = info.get('per_sat_energy', [])
+        Ds = info.get('per_sat_delay_sum', [])
+        Dc = info.get('per_sat_delay_cnt', [])
+        Tmax = float(getattr(cfg, 'T_MAX_DELAY', 6.0))
+        QN   = float(cfg.QUEUE_NORM) if cfg.QUEUE_NORM else 1.0
+        LN   = float(getattr(cfg, 'ZHONG_L_NORM', 1.0e8))
+        DN   = float(cfg.DELTA_DOD_MAX) + 1e-12
+        out: Dict[int, float] = {}
+        for n in count:                                    # 只给本槽有动作的星
+            q_now  = float(Q[n]) if n < len(Q) else 0.0
+            q_prev = self._prevQ.get(n, q_now)
+            l_n    = q_now - q_prev
+            has_done = (n < len(Dc) and Dc[n] > 0)
+            d_mean = (Ds[n] / Dc[n]) if has_done else 0.0
+            excess = (d_mean - Tmax) if has_done else 0.0  # 无完成任务不更新 Y
+            y_now  = max(self._Y.get(n, 0.0) + excess, 0.0)
+            self._Y[n] = y_now
+            D_n    = (float(E[n]) / cfg.E_CAP) if n < len(E) else 0.0
+            q_drift = (q_prev / QN) * (l_n / LN)
+            y_drift = (y_now / Tmax) * (excess / Tmax)
+            dod_pen = D_n / DN
+            out[n] = -(self.zw_q * q_drift + self.zw_y * y_drift + self.upsilon * dod_pen)
+        for n in range(len(Q)):                            # 全星更新 prevQ, 供下槽算 l_n
+            self._prevQ[n] = float(Q[n])
+        return out
+
     def on_episode_end(self) -> None:
         pass
 
@@ -264,7 +321,7 @@ class MADDPGDoDPolicy(PolicyInterface):
     def run_step(self, env: "SatelliteMECEnv") -> Tuple[Dict, bool, Dict]:
         _, rewards, done, info = env.step(policy=self)
         if not self._eval_mode:
-            self._flush_slot(rewards, done)
+            self._flush_slot(rewards, done, info)
             for _ in range(self.updates_per_slot):
                 self._update()
         return rewards, done, info
@@ -313,6 +370,7 @@ class MADDPGDoDPolicy(PolicyInterface):
         env.constellation.rng_task.bit_generator.state = rng_task
         env.constellation.rng_task_param.bit_generator.state = rng_param
         env.reset(phase='train'); self._pending = None
+        self._Y.clear(); self._prevQ.clear()        # Zhong 队列跨 eval 间隔重置
         self.learning_curve.append({'step': self._env_steps, 'completion_rate': cr,
                                     'avg_dod': avg_dod, 'avg_health_loss': avg_hl})
         print(f"[QuickEval/{self.name}] steps={self._env_steps}, CR={cr:.3f}, "

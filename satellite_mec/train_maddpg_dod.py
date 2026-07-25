@@ -44,6 +44,12 @@ def main():
                     help='override DoD virtual-queue penalty weight (default: config 0.5). '
                          'Higher brings the DoD/energy penalty to parity with the '
                          'completion incentive, so the policy actually reduces HL.')
+    ap.add_argument('--zhong', action='store_true',
+                    help='忠实 Zhong eq41 reward: −Q·l −Y·(T−Tmax) −υ·D，队列漂移驱动吞吐、无 W_DONE。')
+    ap.add_argument('--upsilon', type=float, default=None,
+                    help='Zhong DoD 惩罚权重 υ（--zhong 下 DoD↔service 旋钮，default config 1.0）')
+    ap.add_argument('--t_max', type=float, default=None,
+                    help='Zhong 时延虚拟队列 Tmax(s)（default config 6.0）')
     args = ap.parse_args()
 
     cfg = make_cfg(4.0)
@@ -51,14 +57,24 @@ def main():
         cfg.W_DONE = args.w_done
     if args.eta is not None:
         cfg.ETA = args.eta
+    if args.upsilon is not None:
+        cfg.UPSILON = args.upsilon
+    if args.t_max is not None:
+        cfg.T_MAX_DELAY = args.t_max
     env = SatelliteMECEnv(cfg)
     # DoD-aware 但无 HL 的物理基底（忠实论文:优化 DoD,不优化 HL 半衰期）
     env.lyapunov_calc = LyapunovCalculator(cfg, use_dod_penalty=True, use_battery_loss=False)
 
-    maddpg = MADDPGDoDPolicy(cfg, env, expl_noise=args.expl_noise, seed=args.seed)
-    print(f'[MADDPG-DoD] 训练 {args.t_train} 槽, λ=4, 公平起跑线(env奖励+完成激励, '
-          f'DoD-aware 无HL), W_DONE={cfg.W_DONE}, ETA={cfg.ETA}, critic={maddpg.c_dim}维, '
-          f'eval_every={args.eval_every}', flush=True)
+    maddpg = MADDPGDoDPolicy(cfg, env, expl_noise=args.expl_noise, seed=args.seed,
+                             zhong_reward=args.zhong, upsilon=cfg.UPSILON)
+    if args.zhong:
+        print(f'[MADDPG-DoD/Zhong] 训练 {args.t_train} 槽, λ=4, 忠实 eq41 reward '
+              f'(−Q·l −Y·(T−Tmax) −υ·D, 无 W_DONE), υ={cfg.UPSILON}, Tmax={cfg.T_MAX_DELAY}, '
+              f'critic={maddpg.c_dim}维, eval_every={args.eval_every}', flush=True)
+    else:
+        print(f'[MADDPG-DoD] 训练 {args.t_train} 槽, λ=4, 公平起跑线(env奖励+完成激励, '
+              f'DoD-aware 无HL), W_DONE={cfg.W_DONE}, ETA={cfg.ETA}, critic={maddpg.c_dim}维, '
+              f'eval_every={args.eval_every}', flush=True)
 
     path = f'checkpoints/MADDPG_DoD_lh4_{args.tag}'
     best_cr = -1.0; best_step = -1; saved = False

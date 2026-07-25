@@ -82,6 +82,12 @@ class Config:
     ALPHA_BAR_INIT: float = MAX_DISPATCH / 2.0
     COMPLETION_BONUS: float = 1.0                       # 任务完成奖励（直接激励CR）
 
+    # ── Zhong IoT-J 2026 忠实 reward (eq41: r_n = -Q_n·l_n - Y_n·(T-Tmax) - υ·D_n) ──
+    # 仅在 MADDPGDoDPolicy(zhong_reward=True) 下生效；吞吐由队列漂移驱动、无 W_DONE。
+    UPSILON:      float = 1.0        # DoD 惩罚权重 υ —— DoD↔service 旋钮（sweep 主对象）
+    T_MAX_DELAY:  float = 6.0        # 时延虚拟队列 Y_n 的 T_max（s，D_MAX 区间中值）
+    ZHONG_L_NORM: float = 1.0e8      # per-slot 队列变化 l_n 的归一化尺度（bytes/slot，≈单星单槽到达量级）
+
     # ── Outcome-aware reward 权重（MAPPO 训练用，对 baseline 透明） ──
     # 上一组 (W_DONE=1, W_HL=30) HL 推太狠 → CR 卡 38%。重新平衡偏向 CR。
     W_DONE:    float = 5.0                              # 每完成 1 个任务的奖励

@@ -204,6 +204,8 @@ class SatelliteMECEnv(EnvInterface):
         done_per_sat    = {n: 0 for n in range(cfg.N_SATS)}
         timeout_per_sat = {n: 0 for n in range(cfg.N_SATS)}
         satisfied_per_sat = {n: 0 for n in range(cfg.N_SATS)}
+        delay_sum_per_sat = {n: 0.0 for n in range(cfg.N_SATS)}   # Zhong Y_n: per-sat E2E 时延和
+        delay_cnt_per_sat = {n: 0 for n in range(cfg.N_SATS)}
 
         for sat in sats:
             done_tasks, compute_timeout = sat.process_tasks(t)
@@ -218,6 +220,8 @@ class SatelliteMECEnv(EnvInterface):
                 real_delay = (task.finish_slot - task.arrive_slot) * cfg.TAU
                 slot_e2e_delays.append(real_delay)
                 slot_done_deadlines.append(task.deadline)
+                delay_sum_per_sat[sat.sat_id] += real_delay
+                delay_cnt_per_sat[sat.sat_id] += 1
                 if real_delay <= task.deadline:
                     slot_satisfied += 1
                     satisfied_per_sat[sat.sat_id] += 1
@@ -301,6 +305,12 @@ class SatelliteMECEnv(EnvInterface):
             'qb_task_count':     stats.get('avg_qb_tasks', 0.0),
             'reward_ledger':     ledger,    # 诊断：每 slot reward 组成
             'per_sat_dod':      [sat.dod for sat in self.constellation.satellites],
+            # Zhong 忠实 reward 所需 per-sat 量（加法式，不影响既有逻辑）
+            'per_sat_queue':    [s.qf_size + s.qb_size for s in self.constellation.satellites],
+            'per_sat_energy':   [getattr(s, 'slot_comp_energy', 0.0) + getattr(s, 'slot_trans_energy', 0.0)
+                                 for s in self.constellation.satellites],
+            'per_sat_delay_sum':[delay_sum_per_sat[s.sat_id] for s in self.constellation.satellites],
+            'per_sat_delay_cnt':[delay_cnt_per_sat[s.sat_id] for s in self.constellation.satellites],
             'episode_arrived':   self.episode_arrived,
             'episode_done':      self.episode_done,
             'episode_timeout':   self.episode_timeout,
