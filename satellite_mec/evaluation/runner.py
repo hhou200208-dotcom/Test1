@@ -127,17 +127,15 @@ class ExperimentRunner:
         env.reset(phase='train'); policy.set_train_mode()
         episode_idx = 0; start = time.time()
         checkpt_interval = max(cfg.K_ROLLOUT * 100, 1000)
-        reward_curve = []; _ep_sum = 0.0                   # 每-episode 总奖励收敛曲线（密集，加法记录）
+        reward_curve = []                                  # 每-槽系统总奖励（最密，~32000 点）
         iterator = (tqdm(range(cfg.T_TRAIN), desc=f'训练[{policy.name}]',
                          ncols=100, unit='slot')
                     if HAS_TQDM else range(cfg.T_TRAIN))
         for t in iterator:
             _, done, info = policy.run_step(env)
             recorder.record_slot(info, phase='train')
-            _ep_sum += float(info.get('reward_ledger', {}).get('total', 0.0))
+            reward_curve.append(float(info.get('reward_ledger', {}).get('total', 0.0)))
             if done:
-                reward_curve.append({'episode': episode_idx, 'slot': t + 1, 'ep_reward': _ep_sum})
-                _ep_sum = 0.0
                 recorder.record_episode(episode_idx); episode_idx += 1
                 if (policy.trainer.update_count > 0
                         and policy.trainer.update_count % cfg.EVAL_INTERVAL == 0):
