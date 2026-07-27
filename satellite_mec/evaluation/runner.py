@@ -127,23 +127,33 @@ class ExperimentRunner:
         env.reset(phase='train'); policy.set_train_mode()
         episode_idx = 0; start = time.time()
         checkpt_interval = max(cfg.K_ROLLOUT * 100, 1000)
+        reward_curve = []; _rsum = 0.0; _rcnt = 0          # 训练平均奖励收敛曲线（加法记录）
         iterator = (tqdm(range(cfg.T_TRAIN), desc=f'训练[{policy.name}]',
                          ncols=100, unit='slot')
                     if HAS_TQDM else range(cfg.T_TRAIN))
         for t in iterator:
             _, done, info = policy.run_step(env)
             recorder.record_slot(info, phase='train')
+            _rsum += float(info.get('reward_ledger', {}).get('total', 0.0)); _rcnt += 1
             if done:
                 recorder.record_episode(episode_idx); episode_idx += 1
                 if (policy.trainer.update_count > 0
                         and policy.trainer.update_count % cfg.EVAL_INTERVAL == 0):
                     cr, avg_dod, _ = policy.quick_eval(env, n_slots=min(cfg.T_EVAL, 1000))
+                    reward_curve.append({'update': int(policy.trainer.update_count),
+                                         'slot': t + 1,
+                                         'avg_reward_per_slot': _rsum / max(_rcnt, 1)})
+                    _rsum = 0.0; _rcnt = 0
                     if HAS_TQDM:
                         iterator.set_postfix({'CR': f'{cr:.3f}', 'DoD': f'{avg_dod:.3f}'})
             if (t + 1) % checkpt_interval == 0:
                 policy.save(os.path.join(alg_dir, 'checkpoints', f'step_{t+1}'))
         self.logger.info(f"[{policy.name}] 训练完成 {time.time()-start:.1f}s")
         policy.save(os.path.join(alg_dir, 'model'))
+        import json as _json
+        with open(os.path.join(alg_dir, 'reward_curve.json'), 'w') as _f:
+            _json.dump(reward_curve, _f, indent=2)
+        self.logger.info(f"[{policy.name}] reward_curve saved ({len(reward_curve)} pts)")
 
     def run_warmup(self, env: "SatelliteMECEnv",
                    policy: Optional["PolicyInterface"] = None) -> None:
