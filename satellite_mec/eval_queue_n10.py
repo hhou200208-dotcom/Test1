@@ -63,8 +63,8 @@ eval_seeds(lya, 'LyaMAPPO')
 # ── plot ──
 ORDER = ['LyaMAPPO', 'MADDPG_DoD', 'MHSPO', 'GDCO', 'LocalOnly']
 DISP = {'LyaMAPPO': 'BLA-MAPPO', 'MADDPG_DoD': 'LyDRL-DoD', 'LocalOnly': 'LSO'}
-COLOR = {'LyaMAPPO': '#d62728', 'MADDPG_DoD': '#17becf', 'MHSPO': '#2ca02c',
-         'GDCO': '#9467bd', 'LocalOnly': '#7f7f7f'}
+COLOR = {'LyaMAPPO': '#d62728', 'MADDPG_DoD': '#F2C200', 'MHSPO': '#2ca02c',
+         'GDCO': '#9467bd', 'LocalOnly': '#7f7f7f'}          # LyDRL-DoD = 黄色
 
 
 def smooth(a, w=150):
@@ -76,11 +76,9 @@ for p in ORDER:
     if p not in data:
         continue
     m = smooth(np.asarray(data[p]['q_mean']) * NSAT)
-    s = smooth(np.asarray(data[p]['q_std']) * NSAT)
     x = np.arange(len(m)); big = (p == 'LyaMAPPO')
     ax.plot(x, m, color=COLOR[p], lw=2.4 if big else 1.5, label=DISP.get(p, p),
             zorder=3 if big else 2)
-    ax.fill_between(x, m - s, m + s, color=COLOR[p], alpha=0.12, lw=0)
 ax.set_xlabel('Time slot'); ax.set_ylabel('System queue length')
 ax.legend(fontsize=9, ncol=2); ax.grid(True, ls=':', alpha=0.4)
 for sp in ('top', 'right'):
