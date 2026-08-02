@@ -42,9 +42,10 @@ ax.set_xlabel('Time slot'); ax.set_ylabel('System queue length')
 # 顶部留白，图例上移到 LSO 线上方（不遮挡曲线）
 lo, hi = ax.get_ylim(); ax.set_ylim(lo, hi + (hi - lo) * 0.30)
 ax.legend(fontsize=9, ncol=2, loc='upper right', framealpha=0.9)
-# 图例下方灰色小字：示意图标识（跟随图例移到右上）
-ax.text(0.80, 0.82, '示意图（schematic，非实测数据）', transform=ax.transAxes,
-        ha='center', va='top', fontsize=8, color='0.55', fontproperties=CJK)
+# 灰色小字：示意图标识，放在 x 轴标签 'Time slot' 之后（Time slot 位置不变）
+ax.text(0.60, -0.105, '示意图（schematic，非实测数据）', transform=ax.transAxes,
+        ha='left', va='center', fontsize=8, color='0.55', fontproperties=CJK,
+        clip_on=False)
 
 ax.grid(True, ls=':', alpha=0.4)
 for sp in ('top', 'right'):
