@@ -55,8 +55,6 @@ ax.fill_between(x, p10, p90, color='#aec7e8', alpha=0.6, lw=0, label='P10–P90'
 ax.plot(x, med, color='#1f77b4', lw=2.0, label='Median')
 ax.plot(x, p95, color='#ff7f0e', lw=1.6, ls='--', label='P95')
 ax.axhline(DMAX, color='red', lw=1.5, ls='--', label='DoD$_{\\max}$ = 0.8')
-ax.annotate('DoD$_{\\max}$ = 0.8', xy=(T * 0.015, DMAX), xytext=(T * 0.015, DMAX - 0.055),
-            color='red', fontsize=10, va='top')
 ax.set_xlabel('Time slot', fontsize=12)
 ax.set_ylabel('DoD', fontsize=12)
 ax.set_title('BLA-MAPPO DoD Distribution Over Time', fontsize=13)
