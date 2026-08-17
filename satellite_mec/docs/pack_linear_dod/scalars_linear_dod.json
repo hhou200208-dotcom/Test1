@@ -1,0 +1,5 @@
+{
+ "_recovered_note": "从会话记录抢救重建(容器回收致原文件丢失)。这是单跑(默认 seed=42)版标量;逐槽 series_linear_dod.json 无法从记录恢复。真凸测量,N=192,8K,λ=4,新物理。注意:此单跑 seed 恰为反常点(linear 占优),已被 5-seed(multiseed.json)推翻,勿用于结论。",
+ "BLA-MAPPO":     {"satisfaction": 0.717, "delay_s_per_slot": 370.3, "energy_kJ_per_slot": 0.255, "cumHL_x192": 14.20, "t_train": 8000, "linear_dod_train": false},
+ "w/ Linear-DoD": {"satisfaction": 0.784, "delay_s_per_slot": 374.6, "energy_kJ_per_slot": 0.247, "cumHL_x192": 12.53, "t_train": 8000, "linear_dod_train": true}
+}
