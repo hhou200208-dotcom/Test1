@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 # ======================================================================
 HERE = os.path.dirname(os.path.abspath(__file__))
 JSON_MAIN = os.path.join(HERE, 'docs', 'pack_all7', 'series_all7.json')          # 7 方法
-JSON_LD   = os.path.join(HERE, 'docs', 'pack_linear_dod', 'series_linear_dod.json')  # 取 w/ Linear-DoD
+JSON_LD   = os.path.join(HERE, 'docs', 'pack_linear_dod', 'series_ld_1seed.json')  # 取 w/ Linear-DoD(重跑逐槽)
 OUT = os.path.join(HERE, 'docs', 'pack_all7'); os.makedirs(OUT, exist_ok=True)   # 输出目录(可改)
 
 RATIO = 192.0 / 25.0     # =7.68,外延量 25星->192星
