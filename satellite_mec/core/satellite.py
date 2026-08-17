@@ -551,8 +551,11 @@ class Satellite:
         self.slot_house_energy = delta_house * cfg.E_CAP   # 星务基线能耗（与策略无关，常量）
 
         a = cfg.A_COEF
-        l_prime = ((10 ** (a * (dod_before - 1)))
-                   * (1.0 + a * math.log(10) * dod_before))
+        if getattr(cfg, 'LINEAR_DOD_LOSS', False):
+            l_prime = 1.0                                  # 消融:线性老化 L(δ)=δ → L'(δ)=1，Ψ_lin=[Db−Da]⁺
+        else:
+            l_prime = ((10 ** (a * (dod_before - 1)))
+                       * (1.0 + a * math.log(10) * dod_before))
         self.slot_delta_l_comp  = l_prime * delta_comp
         self.slot_delta_l_trans = l_prime * delta_trans
         self.slot_health_loss   = self.slot_delta_l_comp + self.slot_delta_l_trans

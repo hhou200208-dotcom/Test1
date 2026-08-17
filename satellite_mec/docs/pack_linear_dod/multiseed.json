@@ -1,0 +1,37 @@
+{
+ "_recovered_note": "从会话记录抢救重建(容器回收导致原文件丢失)。标量指标为当时打印精度;逐槽 series、learning_curve、训练秒数、模型 checkpoint 无法从记录恢复,需重跑才有。真凸测量,N=192 投影,8K 训练,λ=4,新物理(κ=1.5e-27,E_cap=54kJ,V_DVFS=2e17,DoD[0,0.8])。",
+ "runs": [
+  {"seed": 0, "variant": "full",   "satisfaction": 0.794, "delay_s_per_slot": 359.0, "energy_kJ_per_slot": 0.263, "cumHL_x192": 9.97},
+  {"seed": 0, "variant": "linear", "satisfaction": 0.790, "delay_s_per_slot": 356.9, "energy_kJ_per_slot": 0.226, "cumHL_x192": 11.85},
+  {"seed": 1, "variant": "full",   "satisfaction": 0.814, "delay_s_per_slot": 346.5, "energy_kJ_per_slot": 0.255, "cumHL_x192": 11.34},
+  {"seed": 1, "variant": "linear", "satisfaction": 0.752, "delay_s_per_slot": 403.5, "energy_kJ_per_slot": 0.238, "cumHL_x192": 8.87},
+  {"seed": 2, "variant": "full",   "satisfaction": 0.796, "delay_s_per_slot": 364.0, "energy_kJ_per_slot": 0.237, "cumHL_x192": 10.94},
+  {"seed": 2, "variant": "linear", "satisfaction": 0.774, "delay_s_per_slot": 396.2, "energy_kJ_per_slot": 0.255, "cumHL_x192": 14.02},
+  {"seed": 3, "variant": "full",   "satisfaction": 0.853, "delay_s_per_slot": 333.8, "energy_kJ_per_slot": 0.282, "cumHL_x192": 13.07},
+  {"seed": 3, "variant": "linear", "satisfaction": 0.804, "delay_s_per_slot": 383.9, "energy_kJ_per_slot": 0.252, "cumHL_x192": 12.41},
+  {"seed": 4, "variant": "full",   "satisfaction": 0.817, "delay_s_per_slot": 343.0, "energy_kJ_per_slot": 0.264, "cumHL_x192": 11.45},
+  {"seed": 4, "variant": "linear", "satisfaction": 0.741, "delay_s_per_slot": 391.1, "energy_kJ_per_slot": 0.240, "cumHL_x192": 11.06}
+ ],
+ "summary": {
+  "BLA-MAPPO": {
+   "satisfaction":       {"mean": 0.815, "std": 0.024},
+   "delay_s_per_slot":   {"mean": 349.240, "std": 12.216},
+   "energy_kJ_per_slot": {"mean": 0.260, "std": 0.016},
+   "cumHL_x192":         {"mean": 11.352, "std": 1.124}
+  },
+  "w/ Linear-DoD": {
+   "satisfaction":       {"mean": 0.772, "std": 0.026},
+   "delay_s_per_slot":   {"mean": 386.322, "std": 17.968},
+   "energy_kJ_per_slot": {"mean": 0.242, "std": 0.012},
+   "cumHL_x192":         {"mean": 11.642, "std": 1.893}
+  }
+ },
+ "paired_diff": [
+  {"seed": 0, "d_sat": -0.004, "d_cumHL": 1.89},
+  {"seed": 1, "d_sat": -0.062, "d_cumHL": -2.47},
+  {"seed": 2, "d_sat": -0.022, "d_cumHL": 3.08},
+  {"seed": 3, "d_sat": -0.050, "d_cumHL": -0.66},
+  {"seed": 4, "d_sat": -0.076, "d_cumHL": -0.39}
+ ],
+ "paired_diff_mean": {"d_sat": -0.043, "d_sat_std": 0.029, "d_cumHL": 0.29, "d_cumHL_std": 2.20, "n": 5}
+}

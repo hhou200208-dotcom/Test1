@@ -1,0 +1,13 @@
+{
+ "_recovered_note": "从会话记录抢救重建(容器回收导致原文件丢失)。标量指标为当时打印精度;逐槽 series、learning_curve、训练秒数、模型 checkpoint 无法从记录恢复,需重跑才有。ρ_L=W_HL 敏感性,新物理,12K 训练,λ=4,单 seed,cumHL_x192 = hl*5400*192。",
+ "points": [
+  {"rho_L": 0.0,  "cr": 0.858, "satisfaction": 0.862, "delay": 2.40, "hl": 2.883e-05, "dod": 0.275, "cumHL_x192": 29.89, "t_train": 12000},
+  {"rho_L": 0.5,  "cr": 0.856, "satisfaction": 0.860, "delay": 2.39, "hl": 2.701e-05, "dod": 0.273, "cumHL_x192": 28.01, "t_train": 12000},
+  {"rho_L": 1.0,  "cr": 0.858, "satisfaction": 0.862, "delay": 2.41, "hl": 2.986e-05, "dod": 0.277, "cumHL_x192": 30.96, "t_train": 12000},
+  {"rho_L": 2.0,  "cr": 0.831, "satisfaction": 0.836, "delay": 2.58, "hl": 2.936e-05, "dod": 0.273, "cumHL_x192": 30.44, "t_train": 12000},
+  {"rho_L": 5.0,  "cr": 0.862, "satisfaction": 0.865, "delay": 2.35, "hl": 1.795e-05, "dod": 0.262, "cumHL_x192": 18.61, "t_train": 12000},
+  {"rho_L": 10.0, "cr": 0.822, "satisfaction": 0.826, "delay": 2.79, "hl": 1.446e-05, "dod": 0.254, "cumHL_x192": 15.00, "t_train": 12000},
+  {"rho_L": 20.0, "cr": 0.772, "satisfaction": 0.775, "delay": 2.90, "hl": 1.224e-05, "dod": 0.249, "cumHL_x192": 12.69, "t_train": 12000},
+  {"rho_L": 50.0, "cr": 0.599, "satisfaction": 0.605, "delay": 4.43, "hl": 1.617e-05, "dod": 0.251, "cumHL_x192": 16.77, "t_train": 12000}
+ ]
+}

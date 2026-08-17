@@ -74,6 +74,7 @@ class Config:
     DOD_INIT_LOW: float = 0.2                           # DoD初始值下界
     DOD_INIT_HIGH: float = 0.5                          # DoD初始值上界
     A_COEF: float = 0.8                                 # 电池健康损失曲线系数
+    LINEAR_DOD_LOSS: bool = False                        # 消融开关:True→老化 L(δ)=δ 线性(否则凸 δ·10^{a(δ-1)})
 
     # ── Lyapunov 参数 ─────────────────────────────────────────
     V: float = 50.0                                     # 权衡参数
