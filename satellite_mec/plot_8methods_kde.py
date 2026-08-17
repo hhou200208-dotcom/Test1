@@ -119,7 +119,7 @@ kde_fig({k: np.asarray(data[k]['D']) * RATIO for k in ORDER}, 'System total dela
 # ======================================================================
 # 5. Fig3 系统总能耗(外延量 xRATIO,再 /1e3 J->kJ)
 # ======================================================================
-kde_fig({k: np.asarray(data[k]['E']) * RATIO / 1e3 for k in ORDER}, 'System total energy (kJ)', 'm8_fig3_energy')
+kde_fig({k: np.asarray(data[k]['E']) * RATIO for k in ORDER}, 'System total energy (J)', 'm8_fig3_energy')
 
 # ======================================================================
 # 6. Fig4 累计健康损耗时序(hl 每星平均 x192;斜率=速率,终点=累计量)
