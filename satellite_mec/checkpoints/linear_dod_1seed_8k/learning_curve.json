@@ -1,0 +1,50 @@
+[
+  {
+    "update": 15,
+    "completion_rate": 0.5380456818488984,
+    "avg_dod": 0.32469412445308243,
+    "avg_health_loss": 2.7462978642476738e-05
+  },
+  {
+    "update": 30,
+    "completion_rate": 0.7778078118664684,
+    "avg_dod": 0.3238755172715356,
+    "avg_health_loss": 2.546616622914843e-05
+  },
+  {
+    "update": 45,
+    "completion_rate": 0.7291525881875929,
+    "avg_dod": 0.32348059187991735,
+    "avg_health_loss": 2.4475994889170652e-05
+  },
+  {
+    "update": 60,
+    "completion_rate": 0.6783799612560256,
+    "avg_dod": 0.3231231297104139,
+    "avg_health_loss": 2.3190434743449268e-05
+  },
+  {
+    "update": 75,
+    "completion_rate": 0.7764112267423525,
+    "avg_dod": 0.3216864325440321,
+    "avg_health_loss": 2.251755057088841e-05
+  },
+  {
+    "update": 90,
+    "completion_rate": 0.7808262377798801,
+    "avg_dod": 0.32100616313003993,
+    "avg_health_loss": 2.1532192071180354e-05
+  },
+  {
+    "update": 105,
+    "completion_rate": 0.7753299995494887,
+    "avg_dod": 0.32133750795612104,
+    "avg_health_loss": 2.2232923067773777e-05
+  },
+  {
+    "update": 120,
+    "completion_rate": 0.7243321169527414,
+    "avg_dod": 0.32393110511682943,
+    "avg_health_loss": 2.606147192228849e-05
+  }
+]
