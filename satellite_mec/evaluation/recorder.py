@@ -76,6 +76,10 @@ class MetricsRecorder(MetricsInterface):
             'slot_satisfaction_rate_orig': info.get('slot_satisfaction_rate_orig', 0.0),
             '_per_sat_dod':     info.get('per_sat_dod', []),
             '_slot_e2e_delays': info.get('slot_e2e_delays', []),
+            '_slot_done_deadlines':    info.get('slot_done_deadlines', []),
+            '_slot_timeout_deadlines': info.get('slot_timeout_deadlines', []),
+            '_slot_satisfaction_rate': info.get('slot_satisfaction_rate', 0.0),
+            '_reward_ledger':   info.get('reward_ledger', {}),
         }
         self._slot_records.append(r)
         if phase == 'eval':
@@ -108,6 +112,13 @@ class MetricsRecorder(MetricsInterface):
         slots         = self._current_eval_slots
         total_arrived = sum(s['arrived']    for s in slots)
         total_done    = sum(s['done_tasks'] for s in slots)
+        # 收集所有完成任务的 e2e 延迟样本
+        all_delays = []
+        for s in slots:
+            all_delays.extend(s.get('_slot_e2e_delays', []))
+        # 队列积压（MB）：avg_qf + avg_qb 的时隙平均
+        queue_mb = np.mean([s['avg_qf_size'] + s['avg_qb_size'] for s in slots]) / 1e6
+        slot_satisfaction = np.mean([s.get('slot_satisfaction_rate', 0.0) for s in slots])
         self._eval_run_records.append({
             'run_idx': run_idx, 'algorithm': self.algorithm_name,
             'n_slots': len(slots),
@@ -119,9 +130,22 @@ class MetricsRecorder(MetricsInterface):
             'std_dod':    np.mean([s['std_dod'] for s in slots]),
             'avg_health_loss':        np.mean([s['avg_health_loss'] for s in slots]),
             'cumulative_health_loss': np.sum( [s['avg_health_loss'] for s in slots]),
+            'hl_per_done_task':       (np.sum([s['avg_health_loss'] for s in slots])
+                                       / max(total_done, 1)),
             'avg_qf_size': np.mean([s['avg_qf_size'] for s in slots]),
             'avg_qb_size': np.mean([s['avg_qb_size'] for s in slots]),
             'avg_z':       np.mean([s['avg_z'] for s in slots]),
+            # 5 项标准指标聚合
+            'avg_satisfaction_rate': float(slot_satisfaction),
+            'avg_queue_mb':          float(queue_mb),
+            'avg_e2e_delay':         float(np.mean(all_delays)) if all_delays else 0.0,
+            'p95_e2e_delay':         float(np.percentile(all_delays, 95)) if all_delays else 0.0,
+            'n_delay_samples':       len(all_delays),
+            # Reward ledger 聚合（诊断用，看 MAPPO 学到的奖励组成）
+            'reward_ledger': {
+                k: float(np.mean([s.get('_reward_ledger', {}).get(k, 0.0) for s in slots]))
+                for k in ['done', 'timeout', 'reject', 'hl', 'queue', 'action_cost', 'total']
+            },
         })
         self._current_eval_slots = []
         self._eval_run_idx = run_idx + 1
@@ -136,16 +160,28 @@ class MetricsRecorder(MetricsInterface):
             mean = float(np.mean(values)); std = float(np.std(values))
             ci   = 1.96 * std / np.sqrt(n) if n > 1 else 0.0
             return {'mean': mean, 'std': std, 'ci95': ci, 'values': values}
-        return {
+        out = {
             'algorithm': self.algorithm_name, 'n_runs': n,
             'completion_rate':        mean_ci('completion_rate'),
             'avg_dod':                mean_ci('avg_dod'),
             'max_dod':                mean_ci('max_dod'),
             'avg_health_loss':        mean_ci('avg_health_loss'),
             'cumulative_health_loss': mean_ci('cumulative_health_loss'),
+            'hl_per_done_task':       mean_ci('hl_per_done_task'),
             'avg_qf_size':            mean_ci('avg_qf_size'),
             'avg_z':                  mean_ci('avg_z'),
         }
+        # 5 项标准指标 + reward ledger（如有）
+        for k in ['avg_satisfaction_rate', 'avg_queue_mb', 'avg_e2e_delay', 'p95_e2e_delay']:
+            if k in records[0]:
+                out[k] = mean_ci(k)
+        if 'reward_ledger' in records[0]:
+            keys = ['done','timeout','reject','hl','queue','action_cost','total']
+            out['reward_ledger'] = {
+                k: float(np.mean([r['reward_ledger'].get(k, 0.0) for r in records]))
+                for k in keys
+            }
+        return out
 
     # ── 曲线数据提取 ──────────────────────────────────────────
     def get_dod_curve(self, phase='eval') -> Dict:

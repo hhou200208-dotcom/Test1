@@ -135,7 +135,7 @@ class Task:
         """
         if cpu_freq_m <= 0 or nb_m < 0:
             return float('inf')
-        slots = math.ceil(self.size * self.cpu_cycles * (nb_m + 1) / (cpu_freq_m * tau))
+        slots = math.ceil(self.size * self.cpu_cycles / (cpu_freq_m * tau))
         return slots * tau
 
     def feasible_forward(self, b_nm: float, t_nm: float, nb_m: int,

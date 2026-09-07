@@ -101,12 +101,14 @@ def run_baselines_only(args: argparse.Namespace) -> None:
     local_only   = LocalOnlyPolicy(cfg, env)
     greedy_delay = GreedyDelayPolicy(cfg, env)
     lya_greedy   = LyapunovGreedyPolicy(cfg, env)
-    mhspo        = MHSPOPolicy(cfg, env, rho_d=1.0, rho_e=1.0, V_lyapunov=cfg.V)
+    mhspo        = MHSPOPolicy(cfg, env, rho_d=1.0, rho_e=1.0, V_lyapunov=10.0)
     policies = [local_only, greedy_delay, lya_greedy, mhspo]
 
     # ── 预热（隔离于评估，避免暂态影响）──────────────────────────
+    # 用 MHSPO 预热以训练其 DOGD 预测器：env.reset 会清队列，
+    # 故对其他基线无影响；MHSPO 的预测器作为 policy 状态保留。
     logger.info("预热阶段")
-    runner.run_warmup(env, policy=greedy_delay)
+    runner.run_warmup(env, policy=mhspo)
 
     # ── 逐 run 评估 ───────────────────────────────────────────
     curves_by_run:    List[Dict] = []
@@ -163,7 +165,7 @@ def run_baselines_only(args: argparse.Namespace) -> None:
             ('total_queue',            'Total Queue Backlog (MB)', 'Total Queue (QF+QB)'),
             ('forwarded',              'Forwarded Tasks / Slot',   'Forwarded Tasks'),
             ('slot_satisfaction_rate', 'User Satisfaction Rate',
-             'User Satisfaction Rate (口径A: satisfied/(done+timeout))'),
+             'User Satisfaction Rate (satisfied/(done+timeout))'),
         ]
         for metric, ylabel, title in METRICS:
             plot_metric_per_run(curves_by_run, metric, ylabel, title, fig_dir, metric)

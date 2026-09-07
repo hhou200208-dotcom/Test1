@@ -208,12 +208,15 @@ class MHSPOPolicy(PolicyInterface):
             best_action = 0
             best_cost   = float('inf')
 
+            # 滚动并发数：包含本时隙已分配到本地的任务，避免过度乐观
+            qb_num_eff = qb_num + float(self._local_count[n])
+
             # 动作0：本地计算（约束 12c）
             if self._local_count[n] < cfg.MAX_DISPATCH:
                 d_comp, e_comp = self._est_comp_delay_energy(
-                    task, t + 1, qb_num, qb_pred, cfg.CPU_FREQ)
+                    task, t + 1, qb_num_eff, qb_pred, cfg.CPU_FREQ)
                 if d_comp <= task.remain_time(t) + cfg.TAU:
-                    c = self._local_cost_norm(task, qb_num, q_tilde_f, d_comp, e_comp)
+                    c = self._local_cost_norm(task, qb_num_eff, q_tilde_f, d_comp, e_comp)
                     if c < best_cost:
                         best_cost, best_action = c, 0
 
@@ -227,7 +230,11 @@ class MHSPOPolicy(PolicyInterface):
                     continue
                 if self._link_used[n].get(nb_id, 0.0) + task.size > self.B_bits_max:
                     continue
-                c = self._forward_cost_norm(task, b_nm, t_nm, qf_bits, q_tilde_f)
+                # 邻居感知：用 DOGD 预测器读取邻居 QB 在任务到达时的预测值
+                arrival_slot = t + int(math.ceil((task.size / b_nm + t_nm) / cfg.TAU))
+                nb_qb_pred   = self.predictors[nb_id].get(arrival_slot, float(nb_nb_count))
+                c = self._forward_cost_norm(task, b_nm, t_nm, qf_bits, q_tilde_f,
+                                            nb_qb_pred)
                 if c < best_cost:
                     best_cost, best_action = c, idx + 1
 
@@ -257,9 +264,9 @@ class MHSPOPolicy(PolicyInterface):
         nb_running = max(qb_pred.get(start_slot, qb_num_now) + 1.0, 1.0)
 
         while remaining > 1e-9 and tau < max_tau:
-            freq      = cpu_freq / nb_running
-            processed = min(freq * cfg.TAU / task.cpu_cycles, remaining)
-            energy   += cfg.KAPPA * processed * task.cpu_cycles * freq ** 2
+            processed = min(cpu_freq * cfg.TAU / task.cpu_cycles, remaining)
+            freq_e    = cpu_freq / nb_running   # frequency-division energy model
+            energy   += cfg.KAPPA * processed * task.cpu_cycles * (freq_e ** 2)
             remaining -= processed
             tau       += 1
             nb_running = max(qb_pred.get(tau, max(nb_running - 1.0, 1.0)), 1.0)
@@ -268,17 +275,25 @@ class MHSPOPolicy(PolicyInterface):
 
     def _local_cost_norm(self, task: "Task", qb_num: float,
                          q_tilde_f: float, d_comp: float, e_comp: float) -> float:
-        """P3 第2项归一化：[FIX-C/D] 量纲统一 + / Q_NORM 归一化。"""
+        """P3 第2项归一化：[FIX-C/D] 全部换算为任务数 + / Q_NORM 归一化。"""
         cfg           = self.cfg
-        q_tilde_f_num = q_tilde_f / cfg.S_AVG
-        raw = (task.size * qb_num
-               - task.size * q_tilde_f_num
+        s_avg         = cfg.S_AVG
+        s_i_num       = task.size / s_avg
+        q_tilde_f_num = q_tilde_f / s_avg
+        raw = (s_i_num * qb_num
+               - s_i_num * q_tilde_f_num
                + self.V_lyapunov * (self.rho_d * d_comp + self.rho_e * e_comp))
         return raw / (self.Q_NORM + 1e-9)
 
     def _forward_cost_norm(self, task: "Task", b_nm: float, t_nm: float,
-                           qf_bits: float, q_tilde_f: float) -> float:
-        """P3 第3项归一化：[FIX-A/D] bracket 换算为任务数 + / Q_NORM 归一化。"""
+                           qf_bits: float, q_tilde_f: float,
+                           nb_qb_pred: float) -> float:
+        """
+        P3 第3项归一化：[FIX-A/D] bracket 换算为任务数 + / Q_NORM 归一化。
+
+        nb_qb_pred 邻居预测 QB（任务数），由 DOGD 预测器提供。
+        加入 +s_i_num * nb_qb_pred 惩罚项，使 MHSPO 主动避开高负载邻居。
+        """
         cfg   = self.cfg
         s_avg = cfg.S_AVG
 
@@ -293,5 +308,6 @@ class MHSPOPolicy(PolicyInterface):
         raw = (self.V_lyapunov * self.rho_d * trans_delay
                + self.V_lyapunov * self.rho_e * trans_energy
                - s_i_num   * q_tilde_f_num
-               - s_max_num * bracket_num)
+               - s_max_num * bracket_num
+               + s_i_num   * nb_qb_pred)
         return raw / (self.Q_NORM + 1e-9)

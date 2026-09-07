@@ -30,6 +30,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from core.dvfs import select_freq as dvfs_select_freq, deadline_floor as dvfs_deadline_floor
+
 if TYPE_CHECKING:
     from core.config import Config
     from core.task import Task
@@ -86,9 +88,17 @@ class Satellite:
         self.last_done_count:   int                       = 0
         self._comp_energy:      float                     = 0.0
         self._trans_energy:     float                     = 0.0
+        self._slot_f_cmp:       float                     = 0.0
+        self.last_cpu_freq:     float                     = 0.0   # 上一时隙实际使用的 f_cmp（诊断用）
+        self.last_f_floor:      float                     = 0.0   # 上一时隙 deadline floor
+        self.q_cycles_hat:      float                     = 0.0   # 本时隙累积 backlog 估计（含已接纳）
+        self.f_floor_hat:       float                     = 0.0   # 本时隙累积 floor 估计
         self.slot_health_loss:  float                     = 0.0
         self.slot_delta_l_comp: float                     = 0.0
         self.slot_delta_l_trans: float                    = 0.0
+        self.slot_comp_energy:  float                     = 0.0   # 诊断：本时隙计算能耗(J)
+        self.slot_trans_energy: float                     = 0.0   # 诊断：本时隙传输能耗(J)
+        self.slot_house_energy: float                     = 0.0   # 诊断：本时隙星务能耗(J)
         self.reset()
 
     # ── 重置 ──────────────────────────────────────────────────
@@ -119,9 +129,17 @@ class Satellite:
         self.z_hat      = 0.0
         self._comp_energy  = 0.0
         self._trans_energy = 0.0
+        self._slot_f_cmp   = 0.0
+        self.last_cpu_freq = 0.0
+        self.last_f_floor  = 0.0
+        self.q_cycles_hat  = 0.0
+        self.f_floor_hat   = 0.0
         self.slot_health_loss   = 0.0
         self.slot_delta_l_comp  = 0.0
         self.slot_delta_l_trans = 0.0
+        self.slot_comp_energy   = 0.0
+        self.slot_trans_energy  = 0.0
+        self.slot_house_energy  = 0.0
 
     # ── 时隙初始化 ────────────────────────────────────────────
     def update_solar(self, t: int) -> None:
@@ -138,11 +156,16 @@ class Satellite:
 
     def init_temp_state(self) -> None:
         """初始化当前时隙的预测状态（每时隙调度前调用一次）。"""
-        self.nb_hat = max(self.nb - self.last_done_count + int(math.floor(self.alpha_bar)), 0)
+        self.nb_hat = max(self.nb - self.last_done_count, 0)
         self.z_hat  = self.z
         self.alpha_num = 0
+        # DVFS 边际能耗估计的累积状态：以当前 compute_queue 为基线
+        self.q_cycles_hat = sum(t.get_remaining_size() * t.cpu_cycles
+                                for t in self.compute_queue)
+        self.f_floor_hat  = self.last_f_floor
         self._comp_energy    = 0.0
         self._trans_energy   = 0.0
+        self._slot_f_cmp     = 0.0
         self._forwarded_tasks = []
         self._pending_compute = []
 
@@ -255,22 +278,31 @@ class Satellite:
     def get_state(self, task: "Task", current_slot: int,
                   neighbor_info: Dict) -> np.ndarray:
         """
-        构建 Actor 输入的观测向量（32维）。
+        构建 Actor 输入的观测向量（54 维）。
 
-        Returns
-        -------
-        np.ndarray : shape=(state_dim,) = (32,)
-            [id(1) | local(6) | neighbors(4×5) | task(5)]
+        Layout
+        ------
+            id(1)
+          + local(10): qf, qb, nb_hat, dod, z_hat, xi, tau_switch,
+                       last_cpu_freq, solar_norm, dod_headroom
+          + neighbor(4×9): link_rate, prop_delay, qf, qb, nb, dod, xi,
+                           tau_switch, last_cpu_freq
+          + task(7): size, cycles, hops, trans_delay, remain,
+                     slack_ratio, cycle_rate_need
         """
         cfg       = self.cfg
         id_feat   = np.array([self.sat_id / max(cfg.N_SATS - 1, 1)], dtype=np.float32)
         local_state = np.array([
             self.qf_size / (cfg.Q_F_MAX + 1e-9),
+            self.qb_size / (cfg.Q_F_MAX + 1e-9),
             self.nb_hat  / max(cfg.MAX_DISPATCH, 1),
             self.dod     / cfg.DOD_MAX,
             self.z_hat   / max(cfg.Z_MAX, 1e-9),
             float(self.xi),
             self.tau_switch / cfg.ORBIT_PERIOD,
+            self.last_cpu_freq / max(cfg.CPU_FREQ, 1.0),
+            self.solar_power   / max(cfg.P_SOLAR_MAX, 1e-6),
+            max(cfg.DOD_MAX - self.dod, 0.0) / cfg.DOD_MAX,
         ], dtype=np.float32)
         neighbor_state = []
         max_prop = cfg.ORBIT_RADIUS / cfg.SPEED_OF_LIGHT
@@ -280,60 +312,80 @@ class Satellite:
                 self.link_rates.get(neighbor_id, cfg.B_AVG) / cfg.B_MAX,
                 self.prop_delays.get(neighbor_id, 0.0) / max(max_prop, 1e-9),
                 (info.get('qf_size', 0.0) - cfg.THETA) / (cfg.Q_F_MAX + 1e-9),
+                info.get('qb_size', 0.0) / (cfg.Q_F_MAX + 1e-9),
                 info.get('nb', 0) / max(cfg.MAX_DISPATCH, 1),
                 info.get('dod', 0.0) / cfg.DOD_MAX,
+                float(info.get('xi', 1)),
+                info.get('tau_switch', 0) / cfg.ORBIT_PERIOD,
+                info.get('last_cpu_freq', 0.0) / max(cfg.CPU_FREQ, 1.0),
             ])
         remain = max(task.remain_time(current_slot), 0.0)
+        # slack_ratio: 剩余时间 / 估算计算耗时 (>1 表示有余裕，<1 表示赶不上)
+        est_comp_time = task.size * task.cpu_cycles / max(cfg.CPU_FREQ, 1.0)
+        slack_ratio = remain / max(est_comp_time, 1e-3)
+        # cycle_rate_need: 完成所需的最低频率 / f_max
+        cycle_rate_need = (task.size * task.cpu_cycles / max(remain, 1e-3)) / max(cfg.CPU_FREQ, 1.0)
         task_state = np.array([
             task.size / cfg.S_MAX, task.cpu_cycles / cfg.H_MAX,
             task.hops / max(cfg.K_MAX, 1), task.trans_delay_acc / cfg.D_MAX_MAX,
             remain / cfg.D_MAX_MAX,
+            min(slack_ratio, 10.0) / 10.0,
+            min(cycle_rate_need, 1.0),
         ], dtype=np.float32)
         return np.concatenate([id_feat, local_state,
                                np.array(neighbor_state, dtype=np.float32), task_state])
 
-    def get_critic_state(self, neighbor_info: Dict, current_slot: int) -> np.ndarray:
-        """
-        构建 MAPPO Critic 输入的全局观测向量（135维）。
+    def get_critic_state(self, neighbor_info: Dict, current_slot: int,
+                         global_summary: Optional[np.ndarray] = None) -> np.ndarray:
+        """构建 Critic 观测向量（方案 B: 局部 5 节点 47 维 + 全局摘要 10 维 = 245 维）。
 
-        Returns
-        -------
-        np.ndarray : shape=(critic_state_dim,) = (135,)
+        global_summary 为 None 时使用 0 填充（向后兼容旧 critic）。
         """
-        own_state = self._get_node_state_28()
+        own_state = self._get_node_state_47()
         neighbor_states = [
-            self._get_neighbor_node_state_28(nid, neighbor_info.get(nid, {}))
+            self._get_neighbor_node_state_47(nid, neighbor_info.get(nid, {}))
             for nid in self.neighbors
         ]
-        return np.concatenate([own_state] + neighbor_states)
+        if global_summary is None:
+            global_summary = np.zeros(self.cfg.GLOBAL_SUMMARY_DIM, dtype=np.float32)
+        return np.concatenate([own_state] + neighbor_states + [global_summary])
 
-    def _get_node_state_28(self) -> np.ndarray:
+    def _get_node_state_47(self) -> np.ndarray:
+        """每节点 critic 子向量（与 Actor 的 (id + own + neighbor) 子集对齐，去掉 task）。"""
         cfg = self.cfg
         id_feat = np.array([self.sat_id / max(cfg.N_SATS - 1, 1)], dtype=np.float32)
         local_state = np.array([
             self.qf_size / (cfg.Q_F_MAX + 1e-9),
+            self.qb_size / (cfg.Q_F_MAX + 1e-9),
             self.nb_hat  / max(cfg.MAX_DISPATCH, 1),
             self.dod     / cfg.DOD_MAX,
             self.z_hat   / max(cfg.Z_MAX, 1e-9),
             float(self.xi),
             self.tau_switch / cfg.ORBIT_PERIOD,
+            self.last_cpu_freq / max(cfg.CPU_FREQ, 1.0),
+            self.solar_power   / max(cfg.P_SOLAR_MAX, 1e-6),
+            max(cfg.DOD_MAX - self.dod, 0.0) / cfg.DOD_MAX,
         ], dtype=np.float32)
         return np.concatenate([id_feat, local_state,
-                               np.zeros(cfg.N_NEIGHBORS * 5, dtype=np.float32)])
+                               np.zeros(cfg.N_NEIGHBORS * 9, dtype=np.float32)])
 
-    def _get_neighbor_node_state_28(self, neighbor_id: int, info: Dict) -> np.ndarray:
+    def _get_neighbor_node_state_47(self, neighbor_id: int, info: Dict) -> np.ndarray:
         cfg = self.cfg
         id_feat = np.array([neighbor_id / max(cfg.N_SATS - 1, 1)], dtype=np.float32)
         local_state = np.array([
             info.get('qf_size', 0.0) / (cfg.Q_F_MAX + 1e-9),
+            info.get('qb_size', 0.0) / (cfg.Q_F_MAX + 1e-9),
             info.get('nb', 0) / max(cfg.MAX_DISPATCH, 1),
             info.get('dod', 0.0) / cfg.DOD_MAX,
             0.0,
             float(info.get('xi', 1)),
             info.get('tau_switch', 0) / cfg.ORBIT_PERIOD,
+            info.get('last_cpu_freq', 0.0) / max(cfg.CPU_FREQ, 1.0),
+            info.get('solar_power', 0.0) / max(cfg.P_SOLAR_MAX, 1e-6),
+            max(cfg.DOD_MAX - info.get('dod', 0.0), 0.0) / cfg.DOD_MAX,
         ], dtype=np.float32)
         return np.concatenate([id_feat, local_state,
-                               np.zeros(cfg.N_NEIGHBORS * 5, dtype=np.float32)])
+                               np.zeros(cfg.N_NEIGHBORS * 9, dtype=np.float32)])
 
     def apply_action(self, task: "Task", action: int, current_slot: int,
                      neighbor_info: Dict,
@@ -360,12 +412,20 @@ class Satellite:
         if action == 0:  # 本地计算
             nb_next = self.nb_hat + 1
             cost = lyapunov_calc.normalized_local_cost(task, sat_state, nb_next, current_slot)
+            # 用更新前的 sat_state 计算 delta_dod_comp，再推进 hat
+            delta_dod_local = lyapunov_calc.delta_dod_comp(task, sat_state)
             self.nb_hat    += 1
-            self.z_hat     += lyapunov_calc.delta_dod_comp(task, nb_next)
+            self.z_hat     += delta_dod_local
             self.alpha_num += 1
+            # 推进 DVFS 累积估计（供同时隙后续任务的差分使用）
+            task_cycles = task.size * task.cpu_cycles
+            self.q_cycles_hat += task_cycles
+            new_floor_task = nb_next * task_cycles / max(task.deadline, self.cfg.TAU)
+            self.f_floor_hat = max(self.f_floor_hat, new_floor_task)
             if nb_next > 0:
+                # Li-style DVFS：单任务能耗无闭式，记录上界估计供监控用
                 self._comp_energy += (self.cfg.KAPPA * task.size * task.cpu_cycles
-                                      * (self.cfg.CPU_FREQ ** 2) / (nb_next ** 2))
+                                      * (self.cfg.CPU_FREQ ** 2))
             self._pending_compute.append(task)
             task.set_computing()
             task.current_sat = self.sat_id
@@ -394,7 +454,11 @@ class Satellite:
         """
         推进 compute_queue 中所有任务的计算进度一个时隙。
 
-        先驱逐超时任务（释放 CPU 份额），再对剩余任务均分 CPU_FREQ 推进。
+        步骤：(1) 驱逐超时任务；(2) 按当前 backlog 通过 Li-style DVFS 求解
+        f_cmp(t) ∈ [0, CPU_FREQ]；(3) 把 f_cmp·τ 的 cycle 预算平分给剩余任务。
+
+        f_cmp 由 core.dvfs.select_freq 返回，记入 self._slot_f_cmp 供 update_dod
+        计算真实能耗使用。
 
         Parameters
         ----------
@@ -423,14 +487,25 @@ class Satellite:
                 timeout_tasks.extend(expired)
 
         if self.nb == 0:
+            self._slot_f_cmp     = 0.0
+            self.last_cpu_freq   = 0.0
+            self.last_f_floor    = 0.0
             self.last_done_count = 0
             return done_tasks, timeout_tasks
 
-        # 第二步：均分 CPU，推进计算
-        cpu_per_task    = cfg.CPU_FREQ / self.nb
+        # 第二步：DVFS 选频（Lyapunov 闭式 + 截止时间下限）
+        q_cycles = sum(t.get_remaining_size() * t.cpu_cycles for t in self.compute_queue)
+        f_floor  = dvfs_deadline_floor(cfg, self.compute_queue, current_slot)
+        f_cmp    = dvfs_select_freq(cfg, q_cycles, f_floor=f_floor)
+        self._slot_f_cmp   = f_cmp
+        self.last_cpu_freq = f_cmp
+        self.last_f_floor  = f_floor
+
+        # 第三步：平分 cycle 预算推进任务
+        cycles_per_task = f_cmp * cfg.TAU / self.nb if self.nb > 0 else 0.0
         tasks_to_remove = []
         for task in self.compute_queue:
-            processed = min(cpu_per_task * cfg.TAU / task.cpu_cycles,
+            processed = min(cycles_per_task / task.cpu_cycles,
                             task.get_remaining_size())
             task.update_processed(processed)
             if task.is_done():
@@ -449,27 +524,38 @@ class Satellite:
         """
         更新 DoD 和虚拟队列 z（每时隙末尾调用一次）。
 
+        计算能耗采用 Li-style 整星 DVFS：使用 process_tasks 求得的 f_cmp(t)
+        计算 P_comp = κ·f_cmp³；nb_start 不再参与能耗（保留参数为兼容）。
+
         Parameters
         ----------
-        nb_start : 时隙开始时的并发数（用于能耗估算）；-1 表示使用当前 nb
+        nb_start : 保留参数（用于其它统计），不再参与能耗计算
         """
         cfg       = self.cfg
         dod_before = self.dod
-        nb_for_comp = nb_start if nb_start >= 0 else self.nb
 
-        delta_comp = ((cfg.TAU * cfg.KAPPA * (cfg.CPU_FREQ ** 3)
-                       / (cfg.E_CAP * (nb_for_comp ** 2)))
-                      if nb_for_comp > 0 else 0.0)
+        f_cmp = self._slot_f_cmp
+        delta_comp = (cfg.TAU * cfg.KAPPA * (f_cmp ** 3) / cfg.E_CAP
+                      if f_cmp > 0.0 else 0.0)
         delta_trans = (cfg.P_T * sum(
             task.size / b_nm for _, task, b_nm in self._forwarded_tasks if b_nm > 0
         ) / cfg.E_CAP)
+        delta_house = cfg.P_HOUSEKEEPING * cfg.TAU / cfg.E_CAP
         delta_solar_raw = self.solar_power * cfg.TAU / cfg.E_CAP
         delta_solar = min(delta_solar_raw, max(dod_before - cfg.DOD_MIN, 0.0))
-        delta = delta_comp + delta_trans - delta_solar
+        delta = delta_comp + delta_trans + delta_house - delta_solar
+
+        # 诊断字段：本时隙该卫星实际消耗能量(J)，供"系统总能耗图"汇总（由 env 求和）
+        self.slot_comp_energy  = delta_comp  * cfg.E_CAP   # 计算能耗 = TAU·KAPPA·f_cmp³
+        self.slot_trans_energy = delta_trans * cfg.E_CAP   # 传输能耗 = P_T·Σ(size/b)
+        self.slot_house_energy = delta_house * cfg.E_CAP   # 星务基线能耗（与策略无关，常量）
 
         a = cfg.A_COEF
-        l_prime = ((10 ** (a * (dod_before - 1)))
-                   * (1.0 + a * math.log(10) * dod_before))
+        if getattr(cfg, 'LINEAR_DOD_LOSS', False):
+            l_prime = 1.0                                  # 消融:线性老化 L(δ)=δ → L'(δ)=1，Ψ_lin=[Db−Da]⁺
+        else:
+            l_prime = ((10 ** (a * (dod_before - 1)))
+                       * (1.0 + a * math.log(10) * dod_before))
         self.slot_delta_l_comp  = l_prime * delta_comp
         self.slot_delta_l_trans = l_prime * delta_trans
         self.slot_health_loss   = self.slot_delta_l_comp + self.slot_delta_l_trans
@@ -489,12 +575,15 @@ class Satellite:
     def get_info(self) -> Dict:
         """返回供邻居卫星参考的精简状态字典。"""
         return {
-            'qf_size':    self.qf_size,
-            'n_f':        len(self.forward_queue),
-            'nb':         self.nb,
-            'dod':        self.dod,
-            'xi':         self.xi,
-            'tau_switch': self.tau_switch,
+            'qf_size':       self.qf_size,
+            'qb_size':       self.qb_size,
+            'n_f':           len(self.forward_queue),
+            'nb':            self.nb,
+            'dod':           self.dod,
+            'xi':            self.xi,
+            'tau_switch':    self.tau_switch,
+            'last_cpu_freq': self.last_cpu_freq,
+            'solar_power':   self.solar_power,
         }
 
     def _remove_from_forward_queue(self, task: "Task") -> None:

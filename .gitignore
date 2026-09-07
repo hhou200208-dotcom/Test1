@@ -1,0 +1,26 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Experiment results
+satellite_mec/results/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# LaTeX build artifacts (keep .tex and .pdf)
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# OS
+.DS_Store
