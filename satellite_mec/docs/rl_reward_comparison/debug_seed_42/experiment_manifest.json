@@ -1,0 +1,76 @@
+{
+  "preliminary": true,
+  "single_seed": true,
+  "git_commit": "9b70e6a6ec349eb27538b840f5cdafff36c466f4",
+  "git_branch": "work",
+  "git_dirty": true,
+  "versions": {
+    "python": "3.14.4 (main, May  1 2026, 05:51:55) [GCC 13.3.0]",
+    "numpy": "2.5.3",
+    "torch": "2.14.0+cpu"
+  },
+  "cpu": "x86_64",
+  "gpu": false,
+  "seed": 42,
+  "derived_seeds": {
+    "train": 46,
+    "network": 45,
+    "evaluation": 1042
+  },
+  "config": {
+    "B_BITS_MAX": 300000000.0,
+    "THETA": 3000000000.0,
+    "V_DVFS": 7.499999999999998e+16,
+    "DELTA_MAX": 0.0022277777777777777,
+    "B_F": 1.125e+18,
+    "B_B": 2e+18,
+    "B_Z": 2.481496913580247e-06,
+    "B_TOTAL": 7.8125e+19,
+    "Q_F_MAX": 3000000000.0,
+    "L_MAX": 0.5534647767351493,
+    "L_MAX_CALIBRATED": false,
+    "DELTA_DOD_MAX": 0.0022277777777777777,
+    "Z_MAX": 12.03,
+    "LAMBDA_MAX": 11.0,
+    "THETA_NUM": 210.0,
+    "L_MAX_NEW_RAW": 0.0028522512774084045,
+    "Q_NORM": 10500000000.0,
+    "QUEUE_NORM": 3000000000.0,
+    "SEED": 42,
+    "T_TRAIN": 32000,
+    "K_ROLLOUT": 64,
+    "SEED_TASK": 42,
+    "SEED_TASK_PARAM": 43,
+    "SEED_LINK": 44,
+    "SEED_NET": 45,
+    "SEED_TRAIN": 46
+  },
+  "reward_definition": "common_reward_v1",
+  "reward_weights": {
+    "w_done": 10.0,
+    "w_timeout": 5.0,
+    "w_reject": 5.0,
+    "w_health_loss": 2.0,
+    "w_queue": 0.05
+  },
+  "action_mapping": {
+    "0": "local",
+    "1": "neighbor 1",
+    "2": "neighbor 2",
+    "3": "neighbor 3",
+    "4": "neighbor 4"
+  },
+  "action_masking": "illegal logits/preferences set to -1e9, then categorical(train) or argmax(eval)",
+  "training_steps": 1000,
+  "eval_interval": 1000,
+  "eval_slots": 500,
+  "algorithms": [
+    "MAPPO",
+    "IPPO",
+    "MADDPG",
+    "TD3"
+  ],
+  "command": "train_rl_reward_comparison.py --steps 1000 --eval-interval 1000 --eval-slots 500 --output results/rl_reward_comparison/debug_seed_42",
+  "resumed": false,
+  "raw_results_directory": "results/rl_reward_comparison/debug_seed_42"
+}

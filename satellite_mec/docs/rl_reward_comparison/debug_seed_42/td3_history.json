@@ -1,0 +1,94 @@
+{
+  "algorithm": "TD3",
+  "seed": 42,
+  "reward_definition": "common_reward_v1",
+  "train_return_definition": "mean raw system reward per environment slot since previous evaluation",
+  "environment_steps": [
+    0,
+    1000
+  ],
+  "wall_time_seconds": [
+    18.212466352000092,
+    77.27875578800013
+  ],
+  "train_return": [
+    0.0,
+    45.648355340105624
+  ],
+  "train_return_interval_mean": [
+    0.0,
+    45.648355340105624
+  ],
+  "eval_return": [
+    -19672.862181188462,
+    6739.377456540251
+  ],
+  "eval_return_total": [
+    -19672.862181188462,
+    6739.377456540251
+  ],
+  "eval_return_per_slot": [
+    -39.34572436237693,
+    13.478754913080502
+  ],
+  "completion_rate": [
+    0.4702288684234522,
+    0.83213276192213
+  ],
+  "satisfaction": [
+    0.4761772853185596,
+    0.8374013580473482
+  ],
+  "avg_delay": [
+    5.794066317626527,
+    2.998137190444883
+  ],
+  "avg_health_loss": [
+    0.00018078465327200422,
+    0.0003016324309251348
+  ],
+  "queue_tasks_per_sat": [
+    4.6092,
+    2.4252
+  ],
+  "gradient_updates": [
+    {
+      "critic_updates": 0,
+      "actor_updates": 0
+    },
+    {
+      "critic_updates": 996,
+      "actor_updates": 498
+    }
+  ],
+  "reward_ledger": {
+    "action_cost": [
+      -177.4224143900371,
+      -306.0728727252098
+    ],
+    "done": [
+      51570.0,
+      91260.0
+    ],
+    "timeout": [
+      -25840.0,
+      -8790.0
+    ],
+    "reject": [
+      0.0,
+      0.0
+    ],
+    "health_loss": [
+      -45196.163318000996,
+      -75408.10773128367
+    ],
+    "queue": [
+      -29.276448797364363,
+      -16.441939450842032
+    ],
+    "total": [
+      -19672.862181188462,
+      6739.377456540251
+    ]
+  }
+}

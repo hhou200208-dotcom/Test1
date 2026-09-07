@@ -57,12 +57,12 @@ class TestConfig(unittest.TestCase):
         self.cfg = Config()
 
     def test_state_dim(self):
-        """状态维度应为32（删除天气状态后）。"""
-        self.assertEqual(self.cfg.get_state_dim(), 32)
+        """Actor 状态维度应为当前 54 维 schema。"""
+        self.assertEqual(self.cfg.get_state_dim(), 54)
 
     def test_critic_state_dim(self):
-        """Critic状态维度应为135。"""
-        self.assertEqual(self.cfg.get_critic_state_dim(), 135)
+        """Critic 状态维度应为固定的 245。"""
+        self.assertEqual(self.cfg.get_critic_state_dim(), 245)
 
     def test_action_dim(self):
         """动作维度应为5（本地+4邻居）。"""
@@ -180,13 +180,15 @@ class TestLyapunov(unittest.TestCase):
         self.assertAlmostEqual(calc_lin.health_loss(0.5), 0.5)
         self.assertAlmostEqual(calc_lin.health_loss_deriv(0.5), 1.0)
 
-    def test_delta_dod_comp_zero_nb(self):
+    def test_delta_dod_comp_empty_queue(self):
         task = self._make_task()
-        self.assertEqual(self.calc.delta_dod_comp(task, nb_next=0), 0.0)
+        value = self.calc.delta_dod_comp(task, {'q_cycles_hat': 0, 'f_floor_hat': 0, 'nb_hat': 0})
+        self.assertGreaterEqual(value, 0.0)
 
     def test_delta_dod_comp_positive(self):
         task = self._make_task()
-        ddod = self.calc.delta_dod_comp(task, nb_next=2)
+        ddod = self.calc.delta_dod_comp(task, {'q_cycles_hat': task.size * task.cpu_cycles,
+                                                'f_floor_hat': 0, 'nb_hat': 1})
         self.assertGreater(ddod, 0.0)
 
     def test_delta_dod_trans_zero_bnm(self):
@@ -253,17 +255,17 @@ class TestSatellite(unittest.TestCase):
         self.assertEqual(len(self.sat.forward_queue), 1)
 
     def test_state_vector_shape(self):
-        """get_state() 应返回 (32,) 向量。"""
+        """get_state() 应返回 (54,) 向量。"""
         task  = self._make_task()
         state = self.sat.get_state(task, current_slot=0, neighbor_info={})
         self.assertEqual(state.shape, (self.cfg.get_state_dim(),))
-        self.assertEqual(state.shape[0], 32)
+        self.assertEqual(state.shape[0], 54)
 
     def test_critic_state_shape(self):
-        """get_critic_state() 应返回 (135,) 向量。"""
+        """get_critic_state() 应返回 (245,) 向量。"""
         cs = self.sat.get_critic_state(neighbor_info={}, current_slot=0)
         self.assertEqual(cs.shape, (self.cfg.get_critic_state_dim(),))
-        self.assertEqual(cs.shape[0], 135)
+        self.assertEqual(cs.shape[0], 245)
 
     def test_action_mask_shape(self):
         mask = self.sat.get_action_mask(self._make_task(), current_slot=0, neighbor_nb={})

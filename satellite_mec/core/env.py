@@ -26,6 +26,7 @@ import numpy as np
 
 from core.constellation import Constellation
 from core.lyapunov import LyapunovCalculator
+from core.common_reward import COMPONENTS, common_reward_v1, config_from_env
 from interfaces import EnvInterface
 
 if TYPE_CHECKING:
@@ -225,15 +226,9 @@ class SatelliteMECEnv(EnvInterface):
                 if real_delay <= task.deadline:
                     slot_satisfied += 1
                     satisfied_per_sat[sat.sat_id] += 1
-                    rewards[sat.sat_id] += cfg.COMPLETION_BONUS
+                    # Completion is added exactly once by common_reward_v1 below.
 
         self.episode_done += slot_done
-        slot_timeout_count = self.episode_timeout - self._prev_episode_timeout
-        self._prev_episode_timeout = self.episode_timeout
-        satisfaction_denom      = slot_done + slot_timeout_count
-        slot_satisfaction_rate  = slot_satisfied / max(satisfaction_denom, 1)
-        slot_satisfaction_orig  = slot_satisfied / max(slot_done, 1)
-
         # 6. 转发投递
         tasks_by_target = self.constellation.deliver_tasks(all_forwarded)
         for sat in sats:
@@ -244,36 +239,29 @@ class SatelliteMECEnv(EnvInterface):
                 self.episode_timeout += len(transit_timeout)
                 timeout_per_sat[sat.sat_id] += len(transit_timeout)
 
+        slot_timeout_count = self.episode_timeout - self._prev_episode_timeout
+        self._prev_episode_timeout = self.episode_timeout
+        satisfaction_denom = slot_done + slot_timeout_count
+        slot_satisfaction_rate = slot_satisfied / max(satisfaction_denom, 1)
+        slot_satisfaction_orig = slot_satisfied / max(slot_done, 1)
+
         # 7. DoD / alpha 更新
         for sat in sats:
             sat.update_dod(nb_start=nb_start_map[sat.sat_id])
             sat.update_alpha_avg()
 
-        # 8. Outcome-aware reward 注入 + reward ledger 记录组成
-        #    ledger 总是计算（包括 eval 阶段），方便诊断；reward 注入仅训练阶段生效
-        ledger = {'done': 0.0, 'timeout': 0.0, 'reject': 0.0, 'hl': 0.0, 'queue': 0.0, 'dod': 0.0}
+        # 8. The canonical reward and ledger are identical in train and eval.
+        ledger = {key: 0.0 for key in COMPONENTS}
+        reward_cfg = config_from_env(cfg)
         for sat in sats:
             n = sat.sat_id
             queue_pressure = (sat.qf_size + sat.qb_size) / max(cfg.QUEUE_NORM, 1.0)
-            r_done    =   cfg.W_DONE    * satisfied_per_sat[n]
-            r_timeout = - cfg.W_TIMEOUT * timeout_per_sat[n]
-            r_reject  = - cfg.W_REJECT  * rejected_per_sat[n]
-            r_hl      = - cfg.W_HL      * sat.slot_health_loss / max(cfg.HL_NORM, 1e-12)
-            r_queue   = - cfg.W_QUEUE   * queue_pressure
-            r_dod     = - cfg.W_DOD     * sat.dod        # MADRL-DoD: 罚 DoD 存量 δ（默认 W_DOD=0 无影响）
-            if self.phase == 'train':
-                rewards[n] += r_done + r_timeout + r_reject + r_hl + r_queue + r_dod
-            ledger['done']    += r_done
-            ledger['timeout'] += r_timeout
-            ledger['reject']  += r_reject
-            ledger['hl']      += r_hl
-            ledger['queue']   += r_queue
-            ledger['dod']     += r_dod
-        # 已经在 step 内累加进 rewards 的"action_cost"（来自 sat.apply_action 返回的 −Lyapunov_cost）
-        # 这里再做一次汇总，避免重复计算时把 reward 整体丢失
-        ledger['action_cost'] = float(sum(rewards.values())) - sum(ledger.values()) \
-                                if self.phase == 'train' else float(sum(rewards.values()))
-        ledger['total'] = float(sum(rewards.values()))
+            sat_ledger = common_reward_v1(rewards[n], satisfied_per_sat[n],
+                timeout_per_sat[n], rejected_per_sat[n],
+                sat.slot_health_loss / max(cfg.HL_NORM, 1e-12), queue_pressure, reward_cfg)
+            rewards[n] = sat_ledger['total']
+            for key in COMPONENTS: ledger[key] += sat_ledger[key]
+        ledger['total'] = float(sum(ledger[key] for key in COMPONENTS))
 
         self.current_slot     += 1
         self.slots_in_episode += 1
@@ -359,6 +347,11 @@ class SatelliteMECEnv(EnvInterface):
             masks[n] = [sat.get_action_mask(task, t, neighbor_nb)
                         for task in sat.forward_queue if not task.is_timeout(t)]
         return masks
+
+    def get_local_critic_obs(self) -> Dict[int, np.ndarray]:
+        """Explicit task-independent 47-D local observation for IPPO."""
+        return {sat.sat_id: sat._get_node_state_47().copy()
+                for sat in self.constellation.satellites}
 
     def get_observations(self) -> Dict[int, List[np.ndarray]]:
         t = self.current_slot

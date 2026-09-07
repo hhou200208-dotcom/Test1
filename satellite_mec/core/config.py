@@ -39,7 +39,7 @@ class Config:
     T_TOTAL: int = T_TRAIN + T_WARMUP + T_EVAL
 
     # ── 任务参数 ──────────────────────────────────────────────
-    LAMBDA_HIGH: float = 2.5                          # 高负载卫星到达率（tasks/slot）
+    LAMBDA_HIGH: float = 4.0
     LAMBDA_LOW: float = 0.1                             # 低负载卫星到达率
     LAMBDA_HIGH_RATIO: float = 1 / 5
     LAMBDA: float = LAMBDA_HIGH * LAMBDA_HIGH_RATIO + LAMBDA_LOW * (1 - LAMBDA_HIGH_RATIO)
@@ -81,7 +81,7 @@ class Config:
     ETA: float = 0.5                                    # DoD虚拟队列权重
     MU: float = 0.1                                     # 滑动平均系数
     ALPHA_BAR_INIT: float = MAX_DISPATCH / 2.0
-    COMPLETION_BONUS: float = 1.0                       # 任务完成奖励（直接激励CR）
+    COMPLETION_BONUS: float = 0.0
 
     # ── Zhong IoT-J 2026 忠实 reward (eq41: r_n = -Q_n·l_n - Y_n·(T-Tmax) - υ·D_n) ──
     # 仅在 MADDPGDoDPolicy(zhong_reward=True) 下生效；吞吐由队列漂移驱动、无 W_DONE。
@@ -91,10 +91,10 @@ class Config:
 
     # ── Outcome-aware reward 权重（MAPPO 训练用，对 baseline 透明） ──
     # 上一组 (W_DONE=1, W_HL=30) HL 推太狠 → CR 卡 38%。重新平衡偏向 CR。
-    W_DONE:    float = 5.0                              # 每完成 1 个任务的奖励
-    W_TIMEOUT: float = 3.0                              # 每超时 1 个任务的惩罚
-    W_REJECT:  float = 3.0                              # 每拒收 1 个任务的惩罚
-    W_HL:      float = 10.0                             # 健康损失惩罚权重
+    W_DONE:    float = 10.0
+    W_TIMEOUT: float = 5.0
+    W_REJECT:  float = 5.0
+    W_HL:      float = 2.0
     W_DOD:     float = 0.0                              # MADRL-DoD: DoD 存量 δ_n 惩罚权重（默认0，不影响 LyaMAPPO）
     W_QUEUE:   float = 0.05                             # 队列压力惩罚权重
     HL_NORM:   float = 1e-4                             # HL 归一化（典型 slot 量级）
@@ -104,7 +104,7 @@ class Config:
     GAMMA: float = 0.99
     LAMBDA_GAE: float = 0.95                            # GAE 长视野（HL 是累积量）
     EPSILON: float = 0.2                                # PPO clip ratio
-    BETA: float = 0.15                                  # 熵正则系数（防止早期收敛，改善DoD探索）
+    BETA: float = 0.02
     LR_ACTOR: float = 1e-4
     LR_CRITIC: float = 1e-3
     MINIBATCH: int = 64
