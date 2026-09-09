@@ -146,7 +146,7 @@ def test_local_only_policy_actions_are_valid_type():
     cfg = Config()
     env = SatelliteMECEnv(cfg)
     env.reset("train", {"task": 1101, "task_param": 1102, "dod_init": 1103})
-    policy = LocalOnlyPolicy(cfg)
+    policy = LocalOnlyPolicy(cfg, env)
     # One real environment step exercises the public PolicyInterface path.
     _, rewards, _, _ = env.step(policy=policy)
     assert all(math.isfinite(v) for v in rewards.values())
