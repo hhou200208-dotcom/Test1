@@ -1,6 +1,6 @@
 """One-seed mini-pilot for the four MARL backbones.
 
-This runner is deliberately separate from the final 5-seed/32K experiment.  It checks
+This runner is deliberately separate from the final 5-seed/32K experiment. It checks
 that learning curves can be collected under a common protocol before spending the full
 compute budget.
 """
@@ -13,13 +13,13 @@ import time
 from pathlib import Path
 
 import numpy as np
-import torch
 
 from core import Config, SatelliteMECEnv
 from backbone.compare_algorithms import (
-    SharedRewardMAPPO, IPPOPolicy, SharedRewardMADDPG, MicroStepQMIXPolicy,
+    SharedRewardMAPPO, MicroStepQMIXPolicy,
     seed_everything, system_reward, module_finite,
 )
+from backbone.fairness_fixes import FairIPPOPolicy, FairSharedRewardMADDPG
 
 ALGO = os.environ.get("ALGORITHM", "MAPPO").upper()
 SEED = int(os.environ.get("PILOT_SEED", "0"))
@@ -35,8 +35,6 @@ class PilotConfig(Config):
     N_EVAL_RUNS = 1
     K_ROLLOUT = 64
     BETA_TASK = 0.0
-    # Keep the repository architecture/hyperparameters unless an algorithm requires its
-    # own standard optimizer settings. T_TOTAL must cover all fresh evaluation envs.
     T_TOTAL = max(TRAIN_SLOTS + 128, EVAL_SLOTS + 128, 2048)
 
 
@@ -50,12 +48,7 @@ def fixed_eval_seeds():
 
 
 def common_reward_from_info(info: dict, n_agents: int) -> float:
-    """Reconstruct the same full reward in train and eval phases.
-
-    SatelliteMECEnv only injects outcome terms into `rewards` during training, but its
-    reward ledger computes those terms in both phases.  For deterministic evaluation we
-    therefore reconstruct: action_cost + done + timeout + reject + hl + queue + dod.
-    """
+    """Reconstruct the same full reward in train and eval phases from the ledger."""
     ledger = info.get("reward_ledger", {})
     keys = ("action_cost", "done", "timeout", "reject", "hl", "queue", "dod")
     if ledger:
@@ -67,9 +60,9 @@ def build_policy(name: str, cfg, env):
     if name == "MAPPO":
         p = SharedRewardMAPPO(cfg, name="MAPPO")
     elif name == "IPPO":
-        p = IPPOPolicy(cfg, name="IPPO")
+        p = FairIPPOPolicy(cfg, name="IPPO")
     elif name == "MADDPG":
-        p = SharedRewardMADDPG(
+        p = FairSharedRewardMADDPG(
             cfg, env, name="MADDPG", seed=SEED,
             actor_lr=1e-3, critic_lr=1e-3, gamma=cfg.GAMMA, tau=0.01,
             batch_size=128, start_steps=256, updates_per_slot=1,
@@ -106,7 +99,7 @@ def params_finite(policy, name: str) -> bool:
     return policy.parameters_finite()
 
 
-def evaluate(policy, cfg, name: str) -> dict:
+def evaluate(policy, cfg) -> dict:
     eval_env = SatelliteMECEnv(cfg)
     eval_env.reset("eval", fixed_eval_seeds())
     policy.set_eval_mode()
@@ -114,14 +107,12 @@ def evaluate(policy, cfg, name: str) -> dict:
     slot_rewards = []
     info = {}
     try:
-        for j in range(EVAL_SLOTS):
-            rewards, done, info = policy.run_step(eval_env)
-            r = common_reward_from_info(info, cfg.N_SATS)
-            slot_rewards.append(r)
-        # Evaluation episode-return convention: contiguous chunks of K_ROLLOUT slots.
+        for _ in range(EVAL_SLOTS):
+            _rewards, _done, info = policy.run_step(eval_env)
+            slot_rewards.append(common_reward_from_info(info, cfg.N_SATS))
         k = cfg.K_ROLLOUT
         for start in range(0, len(slot_rewards), k):
-            chunk = slot_rewards[start:start+k]
+            chunk = slot_rewards[start:start + k]
             if chunk:
                 returns.append(float(np.sum(chunk)))
     finally:
@@ -150,13 +141,13 @@ def run() -> dict:
     train_slot_rewards = []
     t0 = time.time()
     for slot in range(1, TRAIN_SLOTS + 1):
-        rewards, done, info = policy.run_step(env)
+        rewards, _done, _info = policy.run_step(env)
         r = system_reward(rewards)
         if not math.isfinite(r):
             raise RuntimeError(f"{ALGO}: non-finite train reward at slot {slot}")
         train_slot_rewards.append(r)
         if slot == 1 or slot % EVAL_INTERVAL == 0 or slot == TRAIN_SLOTS:
-            ev = evaluate(policy, cfg, ALGO)
+            ev = evaluate(policy, cfg)
             row = {
                 "train_slots": slot,
                 "updates": update_count(policy, ALGO),
@@ -166,7 +157,7 @@ def run() -> dict:
             checkpoints.append(row)
             print(json.dumps(row), flush=True)
 
-    if ALGO == "QMIX":
+    if ALGO in ("QMIX", "MADDPG"):
         policy.finalize_training()
     if not params_finite(policy, ALGO):
         raise RuntimeError(f"{ALGO}: non-finite parameters")
@@ -197,6 +188,11 @@ def run() -> dict:
         "wall_time_sec": elapsed,
         "all_params_finite": True,
     }
+    if ALGO == "IPPO":
+        result["ippo"] = {
+            "critic_input": "task-free actor-observable context: own + 1-hop neighbours (47 dims)",
+            "centralized_global_summary": False,
+        }
     if ALGO == "QMIX":
         result["qmix"] = {
             "adapter": "decision-round micro-step with internal NOOP",
@@ -211,7 +207,9 @@ def run() -> dict:
             "discrete_actions": "Gumbel-Softmax",
             "zhong_reward": False,
             "common_Rsys": True,
-            "rollout_boundary_terminal_convention": True,
+            "slot_reward_conservation": "R_sys divided across task replay transitions",
+            "rollout_boundary_terminal_convention": False,
+            "final_unmatched_transition": "discarded (continuing environment)",
         }
     return result
 
