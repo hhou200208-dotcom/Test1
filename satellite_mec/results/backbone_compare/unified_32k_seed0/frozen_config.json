@@ -1,0 +1,63 @@
+{
+  "n_sats": 25,
+  "n_planes": 5,
+  "n_sats_per_plane": 5,
+  "tau_s": 1.0,
+  "orbit_period_slots": 5400,
+  "lambda_high": 4.0,
+  "lambda_low": 0.1,
+  "lambda_high_ratio": 0.2,
+  "lambda_mean": 0.8800000000000001,
+  "task_size_bits": [
+    10000000.0,
+    50000000.0
+  ],
+  "cycles_per_bit": [
+    10.0,
+    30.0
+  ],
+  "deadline_s": [
+    1.0,
+    12.0
+  ],
+  "max_hops": 3,
+  "cpu_freq_max_hz": 2000000000.0,
+  "kappa": 1.5e-27,
+  "v_dvfs": 2e+17,
+  "isl_rate_bps": [
+    100000000.0,
+    300000000.0
+  ],
+  "tx_power_w": 0.1,
+  "battery_capacity_j": 54000.0,
+  "solar_max_w": 30.0,
+  "housekeeping_w": 5.0,
+  "dod_range": [
+    0.0,
+    0.8
+  ],
+  "dod_init_range": [
+    0.2,
+    0.5
+  ],
+  "a_coef": 0.8,
+  "lyapunov_v": 50.0,
+  "lyapunov_eta": 0.5,
+  "reward": {
+    "done": 10.0,
+    "timeout": 5.0,
+    "reject": 5.0,
+    "hl": 2.0,
+    "queue": 0.05,
+    "hl_norm": 0.0001
+  },
+  "ppo": {
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip": 0.2,
+    "entropy_beta": 0.02,
+    "minibatch": 64,
+    "epochs": 2,
+    "rollout_slots": 64
+  }
+}
