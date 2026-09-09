@@ -1,0 +1,186 @@
+name: MARL formal 32K seed0
+
+on:
+  push:
+    branches: [experiment/marl-backbone-smoke]
+    paths:
+      - .github/workflows/marl-formal-32k-seed0.yml
+      - satellite_mec/backbone/formal_32k_seed0.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  train:
+    strategy:
+      fail-fast: false
+      matrix:
+        algorithm: [BLA_MAPPO, MAPPO, IPPO, MADDPG, QMIX]
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Run 32K seed0 experiment
+        working-directory: satellite_mec
+        env:
+          PYTHONPATH: ${{ github.workspace }}/satellite_mec
+          ALGORITHM: ${{ matrix.algorithm }}
+          FORMAL_SEED: '0'
+          FORMAL_TRAIN_SLOTS: '32000'
+          FORMAL_ROLLOUT_SLOTS: '64'
+          FORMAL_EVAL_INTERVAL: '640'
+          FORMAL_EVAL_SLOTS: '64'
+        run: python backbone/formal_32k_seed0.py
+      - name: Upload raw algorithm result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-32k-seed0-${{ matrix.algorithm }}
+          path: satellite_mec/results/backbone_compare/formal_32k_seed0/${{ matrix.algorithm }}/seed0/
+          if-no-files-found: warn
+
+  aggregate:
+    needs: train
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/marl-backbone-smoke
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install plotting runtime
+        run: pip install numpy matplotlib
+      - name: Download five result artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: formal-32k-seed0-*
+          path: /tmp/formal32k
+      - name: Materialize raw data, summaries and figures
+        run: |
+          set -euo pipefail
+          ROOT=satellite_mec/results/backbone_compare/formal_32k_seed0
+          mkdir -p "$ROOT"
+          for ALG in BLA_MAPPO MAPPO IPPO MADDPG QMIX; do
+            SRC="/tmp/formal32k/formal-32k-seed0-${ALG}"
+            if [ -f "$SRC/result.json" ]; then
+              mkdir -p "$ROOT/$ALG/seed0"
+              cp "$SRC"/* "$ROOT/$ALG/seed0/"
+            fi
+          done
+
+          python - <<'PY'
+          import csv, json
+          from pathlib import Path
+          import numpy as np
+          import matplotlib
+          matplotlib.use('Agg')
+          import matplotlib.pyplot as plt
+
+          root=Path('satellite_mec/results/backbone_compare/formal_32k_seed0')
+          algs=['BLA_MAPPO','MAPPO','IPPO','MADDPG','QMIX']
+          labels={'BLA_MAPPO':'BLA-MAPPO','MAPPO':'MAPPO','IPPO':'IPPO','MADDPG':'MADDPG','QMIX':'QMIX'}
+          records={}
+          for a in algs:
+              p=root/a/'seed0'/'result.json'
+              if p.exists(): records[a]=json.loads(p.read_text())
+          if len(records)!=5:
+              raise SystemExit(f'Expected 5 results, found {list(records)}')
+
+          summary=[]
+          eval_rows=[]
+          train_rows=[]
+          for a,d in records.items():
+              f=d['final_eval']
+              summary.append({
+                'algorithm':labels[a], 'seed':d['seed'],
+                'final_eval_return':f['eval_return'], 'final_eval_cr':f['eval_cr'],
+                'final_eval_avg_delay_s':f['eval_avg_delay_s'],
+                'final_eval_total_energy_j':f['eval_total_energy_j'],
+                'final_eval_cum_hl_mean_satellite':f['eval_cum_hl_mean_satellite'],
+                'final_eval_cum_hl_system':f['eval_cum_hl_system'],
+                'final_eval_avg_dod':f['eval_avg_dod'],
+                'final_updates':d['final_updates'], 'wall_time_sec':d['wall_time_sec'],
+              })
+              for r in d['eval_checkpoints']:
+                  eval_rows.append({'algorithm':labels[a], 'seed':d['seed'], **r})
+              for r in d['train_rollouts']:
+                  train_rows.append({'algorithm':labels[a], 'seed':d['seed'], **r})
+
+          def write_csv(path,rows):
+              with path.open('w',newline='') as f:
+                  w=csv.DictWriter(f,fieldnames=rows[0].keys()); w.writeheader(); w.writerows(rows)
+          write_csv(root/'summary_seed0.csv',summary)
+          write_csv(root/'eval_checkpoints_all.csv',eval_rows)
+          write_csv(root/'train_rollouts_all.csv',train_rows)
+          (root/'summary_seed0.json').write_text(json.dumps(summary,indent=2))
+
+          figures=root/'figures'; figures.mkdir(exist_ok=True)
+          # Evaluation return curve: the primary backbone/proposed-method comparison.
+          fig,ax=plt.subplots(figsize=(8.2,4.8))
+          for a,d in records.items():
+              x=[r['train_slots'] for r in d['eval_checkpoints']]
+              y=[r['eval_return'] for r in d['eval_checkpoints']]
+              ax.plot(x,y,label=labels[a],linewidth=1.8)
+          ax.set_xlabel('Training physical slots'); ax.set_ylabel('Evaluation system return (64 slots)')
+          ax.grid(True,linestyle=':',alpha=.35); ax.legend(ncol=2); fig.tight_layout()
+          fig.savefig(figures/'evaluation_return_seed0.png',dpi=200); plt.close(fig)
+
+          # Training return curve; lightly smoothed over 5 rollouts only.
+          fig,ax=plt.subplots(figsize=(8.2,4.8))
+          for a,d in records.items():
+              x=np.array([r['train_slots'] for r in d['train_rollouts']],float)
+              y=np.array([r['train_return'] for r in d['train_rollouts']],float)
+              if len(y)>=5:
+                  k=np.ones(5)/5; ys=np.convolve(y,k,mode='valid'); xs=x[2:2+len(ys)]
+              else: xs,ys=x,y
+              ax.plot(xs,ys,label=labels[a],linewidth=1.6)
+          ax.set_xlabel('Training physical slots'); ax.set_ylabel('Training system return (64 slots)')
+          ax.grid(True,linestyle=':',alpha=.35); ax.legend(ncol=2); fig.tight_layout()
+          fig.savefig(figures/'training_return_seed0.png',dpi=200); plt.close(fig)
+
+          for metric,ylabel,fn in [
+              ('eval_cr','Evaluation completion rate','evaluation_cr_seed0.png'),
+              ('eval_avg_delay_s','Evaluation mean E2E delay (s)','evaluation_delay_seed0.png'),
+              ('eval_total_energy_j','Evaluation total energy (J / 64 slots)','evaluation_energy_seed0.png'),
+              ('eval_cum_hl_mean_satellite','Evaluation cumulative HL (mean satellite)','evaluation_cum_hl_seed0.png'),
+          ]:
+              fig,ax=plt.subplots(figsize=(8.2,4.8))
+              for a,d in records.items():
+                  x=[r['train_slots'] for r in d['eval_checkpoints']]
+                  y=[r[metric] for r in d['eval_checkpoints']]
+                  ax.plot(x,y,label=labels[a],linewidth=1.6)
+              ax.set_xlabel('Training physical slots'); ax.set_ylabel(ylabel)
+              ax.grid(True,linestyle=':',alpha=.35); ax.legend(ncol=2); fig.tight_layout()
+              fig.savefig(figures/fn,dpi=200); plt.close(fig)
+
+          md='''# Formal 32K × 1 Seed Experiment\n\nThis directory contains the complete one-seed 32K run for **BLA-MAPPO, MAPPO, IPPO, MADDPG and QMIX**. It is a full engineering run, but **not yet the final statistical claim** because only seed 0 is included.\n\n## Unified metrics\n\nBoth training rollouts and deterministic evaluation checkpoints record return, completion rate, E2E delay, compute+transmit energy, cumulative battery health loss, and DoD. Evaluation uses the same fixed seeds for all five algorithms.\n\n## Final deterministic evaluation checkpoint\n\n| Algorithm | Return ↑ | CR ↑ | Delay (s) ↓ | Energy (J) ↓ | Cum-HL (mean sat.) ↓ |\n|---|---:|---:|---:|---:|---:|\n'''
+          for r in summary:
+              md += f"| {r['algorithm']} | {r['final_eval_return']:.3f} | {r['final_eval_cr']:.4f} | {r['final_eval_avg_delay_s']:.4f} | {r['final_eval_total_energy_j']:.3f} | {r['final_eval_cum_hl_mean_satellite']:.6e} |\n"
+          md += '''\n## Files\n\n- `<ALGORITHM>/seed0/result.json`: complete raw experiment record.\n- `<ALGORITHM>/seed0/train_rollouts.csv`: 64-slot training metrics.\n- `<ALGORITHM>/seed0/eval_checkpoints.csv`: fixed-seed deterministic evaluation metrics.\n- `eval_checkpoints_all.csv`: plotting-ready combined evaluation table.\n- `train_rollouts_all.csv`: plotting-ready combined training table.\n- `summary_seed0.csv`: compact final-checkpoint table.\n- `figures/`: reward/CR/delay/energy/HL curves.\n\n**Interpretation:** one seed can reveal implementation failures and broad trends but must not be used to claim statistical superiority. The final paper comparison should use the same frozen protocol over 5 paired training seeds and report mean ± standard deviation.\n'''
+          (root/'README.md').write_text(md)
+          PY
+      - name: Commit completed 32K seed0 results
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f satellite_mec/results/backbone_compare/formal_32k_seed0
+          if git diff --cached --quiet; then
+            echo "No result changes to commit"
+          else
+            git commit -m "Commit formal 32K seed0 five-algorithm results"
+            git push origin HEAD:experiment/marl-backbone-smoke
+          fi
