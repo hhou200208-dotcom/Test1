@@ -1,0 +1,102 @@
+name: Materialize 8K pilot results
+
+on:
+  push:
+    branches:
+      - experiment/marl-backbone-smoke
+    paths:
+      - .github/workflows/materialize-8k-results.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/marl-backbone-smoke
+          fetch-depth: 0
+
+      - name: Download completed 8K artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_ID=34377524489
+          mkdir -p /tmp/marl8k
+          for ALG in MAPPO IPPO MADDPG QMIX; do
+            mkdir -p "/tmp/marl8k/${ALG}"
+            gh run download "$RUN_ID" -n "marl-8k-${ALG}" -D "/tmp/marl8k/${ALG}"
+          done
+
+      - name: Create readable result tree
+        run: |
+          set -euo pipefail
+          ROOT=satellite_mec/results/backbone_compare/pilot_8k
+          mkdir -p "$ROOT"/{MAPPO,IPPO,MADDPG,QMIX}
+          for ALG in MAPPO IPPO MADDPG QMIX; do
+            cp "/tmp/marl8k/${ALG}/pilot_8k.json" "$ROOT/${ALG}/seed0.json"
+          done
+
+          python - <<'PY'
+          import csv, json
+          from pathlib import Path
+
+          root = Path('satellite_mec/results/backbone_compare/pilot_8k')
+          algs = ['MAPPO','IPPO','MADDPG','QMIX']
+          rows=[]
+          curves=[]
+          for alg in algs:
+              d=json.loads((root/alg/'seed0.json').read_text())
+              last=d['checkpoints'][-1]
+              rows.append({
+                  'algorithm':alg,
+                  'seed':d['seed'],
+                  'final_eval_return':d['final_return'],
+                  'mean_post_initial_return':d['mean_post_initial_return'],
+                  'auc_trapezoid':d['auc_trapezoid'],
+                  'final_completion_rate':last['eval_completion_rate'],
+                  'final_avg_dod':last['eval_avg_dod'],
+                  'final_avg_health_loss':last['eval_avg_health_loss'],
+                  'final_updates':d['final_updates'],
+                  'wall_time_sec':d['wall_time_sec'],
+              })
+              for cp in d['checkpoints']:
+                  curves.append({
+                      'algorithm':alg,
+                      'seed':d['seed'],
+                      'train_slots':cp['train_slots'],
+                      'eval_episode_return':cp['mean_eval_episode_return'],
+                      'eval_completion_rate':cp['eval_completion_rate'],
+                      'eval_avg_dod':cp['eval_avg_dod'],
+                      'eval_avg_health_loss':cp['eval_avg_health_loss'],
+                  })
+
+          with (root/'summary_seed0.csv').open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=rows[0].keys()); w.writeheader(); w.writerows(rows)
+          with (root/'curves_seed0.csv').open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=curves[0].keys()); w.writeheader(); w.writerows(curves)
+          (root/'summary_seed0.json').write_text(json.dumps(rows,indent=2))
+
+          readme = '''# 8K-slot Pilot Results (Seed 0)\n\n> **Pilot only — not the final convergence result.** This directory contains the first frozen-hyperparameter run using 8,192 physical training slots and one paired environment seed. Do not use this one-seed result to claim algorithm superiority.\n\n## Files\n\n- `MAPPO/seed0.json` — raw checkpoint record\n- `IPPO/seed0.json` — raw checkpoint record\n- `MADDPG/seed0.json` — raw checkpoint record\n- `QMIX/seed0.json` — raw checkpoint record\n- `summary_seed0.csv` / `.json` — compact final metrics\n- `curves_seed0.csv` — plotting-ready checkpoint table\n\n## Final checkpoint at 8K slots\n\n| Algorithm | Eval episode return ↑ | Completion rate ↑ |\n|---|---:|---:|\n'''
+          for r in rows:
+              readme += f"| {r['algorithm']} | {r['final_eval_return']:.2f} | {r['final_completion_rate']:.3f} |\n"
+          readme += '''\nThe last checkpoint is noisy: the curves fluctuate substantially within a single seed. The formal experiment therefore remains **32K slots × 5 paired seeds**, reported as mean ± standard deviation with Final Return, AUC, T90 and final-run variance.\n'''
+          (root/'README.md').write_text(readme)
+          PY
+
+      - name: Commit materialized records
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add satellite_mec/results/backbone_compare/pilot_8k
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Commit 8K MARL pilot raw results"
+            git push origin HEAD:experiment/marl-backbone-smoke
+          fi
