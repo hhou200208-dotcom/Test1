@@ -1,0 +1,120 @@
+name: RL common reward verification
+
+on:
+  push:
+    branches: [rl-common-reward-single-seed]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    defaults:
+      run:
+        working-directory: satellite_mec
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mandatory repository baseline
+        working-directory: .
+        run: |
+          echo '=== git status --short ==='
+          git status --short
+          echo '=== git branch --show-current ==='
+          git branch --show-current
+          echo '=== git log -5 --oneline ==='
+          git log -5 --oneline
+          echo '=== git remote -v ==='
+          git remote -v
+          echo '=== AGENTS.md ==='
+          find .. -name AGENTS.md -print
+          echo '=== existing comparison results ==='
+          find satellite_mec/results/rl_reward_comparison -maxdepth 3 -type f -print 2>/dev/null || true
+          echo '=== virtual environments ==='
+          find . -maxdepth 3 \( -name '.venv' -o -name 'venv' -o -name 'env' \) -type d -print
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install only missing Python dependencies
+        run: |
+          python - <<'PY'
+          import importlib.util, subprocess, sys
+          packages = ['numpy','torch','scipy','matplotlib','tqdm','pytest']
+          missing = [p for p in packages if importlib.util.find_spec(p) is None]
+          print('missing:', missing)
+          if missing:
+              subprocess.check_call([sys.executable, '-m', 'pip', 'install', *missing])
+          PY
+          python - <<'PY'
+          import platform, numpy, torch, scipy, matplotlib, tqdm
+          print('Python', platform.python_version())
+          print('NumPy', numpy.__version__)
+          print('PyTorch', torch.__version__)
+          print('SciPy', scipy.__version__)
+          print('Matplotlib', matplotlib.__version__)
+          print('tqdm', tqdm.__version__)
+          print('CUDA available', torch.cuda.is_available())
+          PY
+
+      - name: Golden checkpoint checksum before tests
+        run: |
+          cd checkpoints/LyaMAPPO_lh4_32K
+          md5sum -c CHECKSUMS.md5
+
+      - name: Static checks and help
+        working-directory: .
+        run: |
+          git diff --check origin/main...HEAD
+          cd satellite_mec
+          python train_rl_reward_comparison.py --help
+          python plot_rl_reward_comparison.py --help
+
+      - name: Full test suite
+        run: python -m pytest tests -q
+
+      - name: Four-algorithm 10-slot smoke
+        run: |
+          rm -rf results/rl_reward_comparison/smoke_10_seed_42
+          python train_rl_reward_comparison.py \
+            --algorithms MAPPO,IPPO,MADDPG,TD3 \
+            --steps 10 --eval-interval 10 --eval-slots 10
+          python plot_rl_reward_comparison.py results/rl_reward_comparison/smoke_10_seed_42
+
+      - name: Four-algorithm 1K debug with fixed 500-slot eval
+        run: |
+          rm -rf results/rl_reward_comparison/debug_1000_seed_42
+          python train_rl_reward_comparison.py \
+            --algorithms MAPPO,IPPO,MADDPG,TD3 \
+            --steps 1000 --eval-interval 1000 --eval-slots 500
+          python plot_rl_reward_comparison.py results/rl_reward_comparison/debug_1000_seed_42
+
+      - name: Golden checkpoint checksum after runs
+        if: always()
+        run: |
+          cd checkpoints/LyaMAPPO_lh4_32K
+          md5sum -c CHECKSUMS.md5
+
+      - name: Final repository checks
+        if: always()
+        working-directory: .
+        run: |
+          git status --short
+          git diff --check
+
+      - name: Upload real smoke/debug outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rl-common-reward-smoke-debug-${{ github.sha }}
+          path: |
+            satellite_mec/results/rl_reward_comparison/smoke_10_seed_42
+            satellite_mec/results/rl_reward_comparison/debug_1000_seed_42
+          if-no-files-found: warn
+          retention-days: 14
