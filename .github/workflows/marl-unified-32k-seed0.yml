@@ -1,0 +1,194 @@
+name: MARL unified 32K seed0
+
+on:
+  push:
+    branches: [experiment/marl-backbone-smoke]
+    paths:
+      - .github/workflows/marl-unified-32k-seed0.yml
+      - satellite_mec/backbone/unified_32k_seed0.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  train:
+    strategy:
+      fail-fast: false
+      matrix:
+        algorithm: [BLA_MAPPO, MAPPO, IPPO, MADDPG, QMIX]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Run unified 32K seed0 experiment
+        working-directory: satellite_mec
+        env:
+          PYTHONPATH: ${{ github.workspace }}/satellite_mec
+          ALGORITHM: ${{ matrix.algorithm }}
+          UNIFIED_SEED: '0'
+          UNIFIED_TRAIN_SLOTS: '32000'
+          UNIFIED_ROLLOUT_SLOTS: '64'
+          UNIFIED_EVAL_INTERVAL: '640'
+          UNIFIED_ONLINE_EVAL_SLOTS: '64'
+          UNIFIED_FINAL_EVAL_SLOTS: '5400'
+          UNIFIED_RUN_TAG: 'unified_32k_seed0'
+        run: python backbone/unified_32k_seed0.py
+      - name: Upload raw algorithm result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unified-32k-seed0-${{ matrix.algorithm }}
+          path: satellite_mec/results/backbone_compare/unified_32k_seed0/${{ matrix.algorithm }}/seed0/
+          if-no-files-found: warn
+          retention-days: 14
+
+  aggregate:
+    needs: train
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/marl-backbone-smoke
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install plotting runtime
+        run: pip install numpy matplotlib
+      - name: Download five result artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: unified-32k-seed0-*
+          path: /tmp/unified32k
+      - name: Materialize raw data, summaries and figures
+        run: |
+          set -euo pipefail
+          ROOT=satellite_mec/results/backbone_compare/unified_32k_seed0
+          mkdir -p "$ROOT"
+          for ALG in BLA_MAPPO MAPPO IPPO MADDPG QMIX; do
+            SRC="/tmp/unified32k/unified-32k-seed0-${ALG}"
+            if [ -f "$SRC/result.json" ]; then
+              mkdir -p "$ROOT/$ALG/seed0"
+              cp "$SRC"/* "$ROOT/$ALG/seed0/"
+            fi
+          done
+
+          python - <<'PY'
+          import csv, json
+          from pathlib import Path
+          import numpy as np
+          import matplotlib
+          matplotlib.use('Agg')
+          import matplotlib.pyplot as plt
+
+          root=Path('satellite_mec/results/backbone_compare/unified_32k_seed0')
+          algs=['BLA_MAPPO','MAPPO','IPPO','MADDPG','QMIX']
+          labels={'BLA_MAPPO':'BLA-MAPPO','MAPPO':'MAPPO','IPPO':'IPPO','MADDPG':'MADDPG','QMIX':'QMIX'}
+          records={}
+          for a in algs:
+              p=root/a/'seed0'/'result.json'
+              if p.exists(): records[a]=json.loads(p.read_text())
+          if len(records)!=5:
+              raise SystemExit(f'Expected 5 results, found {list(records)}')
+
+          summary=[]; eval_rows=[]; train_rows=[]
+          for a,d in records.items():
+              f=d['final_5400_eval']
+              summary.append({
+                  'algorithm':labels[a], 'seed':d['seed'],
+                  'final_eval_return':f['final_return'],
+                  'satisfaction':f['final_satisfaction'],
+                  'system_delay_overhead_s_per_slot':f['final_system_delay_overhead_s_per_slot'],
+                  'system_energy_overhead_kj_per_slot':f['final_system_energy_overhead_kj_per_slot'],
+                  'cumulative_lifetime_loss':f['final_cumulative_lifetime_loss'],
+                  'avg_completed_e2e_delay_s':f['final_avg_completed_e2e_delay_s'],
+                  'total_dynamic_energy_j':f['final_total_dynamic_energy_j'],
+                  'avg_dod':f['final_avg_dod'],
+                  'final_updates':d['final_updates'],
+                  'wall_time_sec':d['wall_time_sec'],
+                  'checkpoint_sha256':d['checkpoint_sha256'],
+              })
+              for r in d['online_eval_checkpoints']:
+                  eval_rows.append({'algorithm':labels[a], 'seed':d['seed'], **r})
+              for r in d['train_rollouts']:
+                  train_rows.append({'algorithm':labels[a], 'seed':d['seed'], **r})
+
+          def write_csv(path, rows):
+              with path.open('w',newline='') as f:
+                  w=csv.DictWriter(f,fieldnames=rows[0].keys()); w.writeheader(); w.writerows(rows)
+
+          write_csv(root/'summary_seed0.csv',summary)
+          write_csv(root/'online_eval_checkpoints_all.csv',eval_rows)
+          write_csv(root/'train_rollouts_all.csv',train_rows)
+          (root/'summary_seed0.json').write_text(json.dumps(summary,indent=2))
+          config0=next(iter(records.values()))['config']
+          for d in records.values():
+              if d['config'] != config0:
+                  raise SystemExit('Config fingerprint differs across algorithms')
+          (root/'frozen_config.json').write_text(json.dumps(config0,indent=2))
+
+          figs=root/'figures'; figs.mkdir(exist_ok=True)
+          fig,ax=plt.subplots(figsize=(8.2,4.8))
+          for a,d in records.items():
+              x=[r['train_slots'] for r in d['online_eval_checkpoints']]
+              y=[r['eval_return'] for r in d['online_eval_checkpoints']]
+              ax.plot(x,y,label=labels[a],linewidth=1.7)
+          ax.set_xlabel('Training physical slots'); ax.set_ylabel('Online evaluation return (64 slots)')
+          ax.grid(True,linestyle=':',alpha=.35); ax.legend(ncol=2); fig.tight_layout()
+          fig.savefig(figs/'online_eval_return_seed0.png',dpi=200); plt.close(fig)
+
+          fig,ax=plt.subplots(figsize=(8.2,4.8))
+          for a,d in records.items():
+              x=np.asarray([r['train_slots'] for r in d['train_rollouts']],float)
+              y=np.asarray([r['train_return'] for r in d['train_rollouts']],float)
+              if len(y)>=5:
+                  ys=np.convolve(y,np.ones(5)/5,mode='valid'); xs=x[2:2+len(ys)]
+              else: xs,ys=x,y
+              ax.plot(xs,ys,label=labels[a],linewidth=1.5)
+          ax.set_xlabel('Training physical slots'); ax.set_ylabel('Training return (64 slots)')
+          ax.grid(True,linestyle=':',alpha=.35); ax.legend(ncol=2); fig.tight_layout()
+          fig.savefig(figs/'training_return_seed0.png',dpi=200); plt.close(fig)
+
+          metrics=[
+              ('satisfaction','User satisfaction'),
+              ('system_delay_overhead_s_per_slot','System delay overhead (s/slot)'),
+              ('system_energy_overhead_kj_per_slot','System energy overhead (kJ/slot)'),
+              ('cumulative_lifetime_loss','Cumulative lifetime loss'),
+          ]
+          for key,ylabel in metrics:
+              fig,ax=plt.subplots(figsize=(7.5,4.6))
+              xs=np.arange(len(summary)); vals=[r[key] for r in summary]
+              ax.bar(xs,vals)
+              ax.set_xticks(xs, [r['algorithm'] for r in summary], rotation=15)
+              ax.set_ylabel(ylabel); ax.grid(True,axis='y',linestyle=':',alpha=.35); fig.tight_layout()
+              fig.savefig(figs/f'final_{key}_seed0.png',dpi=200); plt.close(fig)
+
+          md='''# Unified 25-Satellite 32K × Seed0 Benchmark\n\nAll five learning methods are retrained from scratch with the same frozen 25-satellite environment, workload, physical model, external reward definition, 32K physical-slot training budget, paired training seeds and fixed evaluation seeds.\n\nOnline convergence uses a short fixed-seed 64-slot deterministic evaluation every 640 training slots. The paper-facing final metrics are obtained from the frozen 32K state in an independent **5400-slot** deterministic evaluation.\n\n## Frozen configuration\n\n- N = 25 (5×5); hotspot ratio = 1/5.\n- lambda_H = 4.0, lambda_L = 0.1, mean lambda = 0.88 task/slot/satellite.\n- kappa = 1.5e-27; battery capacity = 54 kJ; DoD range [0, 0.8].\n- V_DVFS = 2e17; solar max = 30 W; housekeeping = 5 W.\n- External reward weights: done/timeout/reject/HL/queue = 10/5/5/2/0.05.\n- PPO family: gamma=.99, GAE=.95, clip=.2, entropy=.02, actor LR=1e-4, critic LR=1e-3, epochs=2, rollout=64.\n- BLA-MAPPO uses beta_task=.5; vanilla MAPPO/IPPO use beta_task=0.\n\n## Final 5400-slot deterministic evaluation\n\n| Algorithm | Return ↑ | Satisfaction ↑ | Delay (s/slot) ↓ | Energy (kJ/slot) ↓ | Cum lifetime loss ↓ |\n|---|---:|---:|---:|---:|---:|\n'''
+          for r in summary:
+              md += f"| {r['algorithm']} | {r['final_eval_return']:.3f} | {r['satisfaction']:.4f} | {r['system_delay_overhead_s_per_slot']:.4f} | {r['system_energy_overhead_kj_per_slot']:.6f} | {r['cumulative_lifetime_loss']:.6e} |\n"
+          md += '''\nThis is the **one-seed configuration acceptance run**. It validates the frozen experiment protocol but is not yet the final statistical claim. After acceptance, repeat the same protocol over 5 paired training seeds and report mean ± standard deviation (or 95% CI).\n'''
+          (root/'README.md').write_text(md)
+          PY
+      - name: Commit completed unified seed0 results
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f satellite_mec/results/backbone_compare/unified_32k_seed0
+          if git diff --cached --quiet; then
+            echo "No result changes to commit"
+          else
+            git commit -m "Commit unified 32K seed0 five-algorithm results"
+            git push origin HEAD:experiment/marl-backbone-smoke
+          fi
