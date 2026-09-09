@@ -27,7 +27,12 @@ class _IPPOConfigView:
         self._base = base
 
     def __getattr__(self, name):
-        return getattr(self._base, name)
+        # Pickle may probe attributes before ``_base`` has been restored.  Avoid
+        # recursive access so resumable IPPO checkpoints can be reconstructed.
+        base = self.__dict__.get("_base")
+        if base is None:
+            raise AttributeError(name)
+        return getattr(base, name)
 
     def get_state_dim(self) -> int:
         return self._base.get_state_dim()
