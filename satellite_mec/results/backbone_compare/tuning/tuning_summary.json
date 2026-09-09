@@ -1,0 +1,43 @@
+{
+  "stage": "1K single-seed equal-budget hyperparameter screening",
+  "seed": 0,
+  "selection_rule": "Choose the candidate with the highest mean evaluation episode return across the four post-initial checkpoints (256, 512, 768, 1024 slots). This AUC-like rule was fixed before selecting candidates and avoids choosing a lucky final checkpoint.",
+  "evaluation": {
+    "slots_per_checkpoint": 64,
+    "fixed_eval_seeds": {"task": 91001, "task_param": 91002, "dod_init": 91003},
+    "metric": "64-slot deterministic evaluation episode return reconstructed from the full reward ledger"
+  },
+  "MAPPO": {
+    "candidates": {
+      "a_default": {"actor_lr": 0.0001, "critic_lr": 0.001, "final_return": -433.5807033007391, "mean_postwarmup_return": -483.5500673739091},
+      "b_actor3e-4": {"actor_lr": 0.0003, "critic_lr": 0.001, "final_return": -370.63823733691925, "mean_postwarmup_return": -431.8048686802498},
+      "c_critic3e-4": {"actor_lr": 0.0001, "critic_lr": 0.0003, "final_return": -409.4984739974385, "mean_postwarmup_return": -476.8136421009475}
+    },
+    "selected": "b_actor3e-4"
+  },
+  "IPPO": {
+    "candidates": {
+      "a_default": {"actor_lr": 0.0001, "critic_lr": 0.001, "final_return": -406.56330992142597, "mean_postwarmup_return": -522.8838697720895},
+      "b_actor3e-4": {"actor_lr": 0.0003, "critic_lr": 0.001, "final_return": -511.14661548369946, "mean_postwarmup_return": -507.358500353959},
+      "c_critic3e-4": {"actor_lr": 0.0001, "critic_lr": 0.0003, "final_return": -555.2471129216688, "mean_postwarmup_return": -541.7881580181989}
+    },
+    "selected": "b_actor3e-4"
+  },
+  "MADDPG": {
+    "candidates": {
+      "a_lr1e-4": {"actor_lr": 0.0001, "critic_lr": 0.001, "expl_noise": 0.1, "final_return": -553.877824273372, "mean_postwarmup_return": -447.28580636987624},
+      "b_lr3e-4": {"actor_lr": 0.0003, "critic_lr": 0.001, "expl_noise": 0.1, "final_return": -369.3676232729932, "mean_postwarmup_return": -476.8689832551987},
+      "c_lowcritic": {"actor_lr": 0.0001, "critic_lr": 0.0003, "expl_noise": 0.15, "final_return": -398.70127389567216, "mean_postwarmup_return": -429.96048419809443}
+    },
+    "selected": "c_lowcritic"
+  },
+  "QMIX": {
+    "candidates": {
+      "a_lr1e-4": {"lr": 0.0001, "final_return": -398.54794455514866, "mean_postwarmup_return": -392.77165853374873},
+      "b_lr5e-4": {"lr": 0.0005, "final_return": -289.6375155331193, "mean_postwarmup_return": -304.3100016131888},
+      "c_lr1e-3": {"lr": 0.001, "final_return": -320.1128249931328, "mean_postwarmup_return": -364.7922633349063}
+    },
+    "selected": "b_lr5e-4"
+  },
+  "important_note": "These 1K/seed0 screening values are tuning diagnostics, not paper results and not evidence that one backbone is superior. Final comparison requires longer runs and multiple paired seeds."
+}
