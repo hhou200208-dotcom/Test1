@@ -22,6 +22,7 @@ jobs:
       - name: Run real SatelliteMECEnv smoke test
         working-directory: satellite_mec
         env:
+          PYTHONPATH: ${{ github.workspace }}/satellite_mec
           SMOKE_TRAIN_SLOTS: '32'
           SMOKE_EVAL_SLOTS: '8'
         run: python backbone/real_env_smoke.py
