@@ -45,7 +45,8 @@ class LocalOnlyPolicy(PolicyInterface):
         actions = {}
         sats    = self.env.constellation.satellites
         for sat in sats:
-            actions[sat.sat_id] = [0] * len(sat.forward_queue)
+            actions[sat.sat_id] = [0 if mask[0] else int(np.argmax(mask))
+                                   for mask in masks.get(sat.sat_id, [])]
         return actions
 
 

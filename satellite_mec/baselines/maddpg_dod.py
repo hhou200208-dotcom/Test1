@@ -178,6 +178,7 @@ class MADDPGDoDPolicy(PolicyInterface):
 
         self._eval_mode = False
         self._env_steps = 0
+        self._total_it = 0
         self._cobs: Dict[int, np.ndarray] = {}          # 本槽各星 critic 态快照
         # 槽级缓冲：(s, cobs, a_onehot, mask, action_cost, sat_id)
         self._slot_tasks: List[Tuple] = []
@@ -329,6 +330,7 @@ class MADDPGDoDPolicy(PolicyInterface):
     def _update(self) -> None:
         if self.replay.size < max(self.batch_size, self.start_steps):
             return
+        self._total_it += 1
         s, c, a, r, s2, c2, m2, d = self.replay.sample(self.batch_size, self.device)
 
         with torch.no_grad():
@@ -385,6 +387,12 @@ class MADDPGDoDPolicy(PolicyInterface):
         os.makedirs(path, exist_ok=True)
         torch.save(self.actor.state_dict(),  os.path.join(path, 'actor.pth'))
         torch.save(self.critic.state_dict(), os.path.join(path, 'critic.pth'))
+        torch.save({'actor_target': self.actor_target.state_dict(),
+                    'critic_target': self.critic_target.state_dict(),
+                    'actor_opt': self.actor_opt.state_dict(),
+                    'critic_opt': self.critic_opt.state_dict(),
+                    'total_it': self._total_it, 'env_steps': self._env_steps},
+                   os.path.join(path, 'training_state.pth'))
         meta = dict(extra_info or {})
         with open(os.path.join(path, 'meta.json'), 'w', encoding='utf-8') as f:
             json.dump(meta, f, indent=2, ensure_ascii=False)
@@ -394,8 +402,14 @@ class MADDPGDoDPolicy(PolicyInterface):
 
     def load(self, path: str) -> Dict:
         self.actor.load_state_dict(torch.load(os.path.join(path, 'actor.pth')))
-        self.actor_target.load_state_dict(self.actor.state_dict())
         self.critic.load_state_dict(torch.load(os.path.join(path, 'critic.pth')))
-        self.critic_target.load_state_dict(self.critic.state_dict())
+        state_path=os.path.join(path, 'training_state.pth')
+        if os.path.exists(state_path):
+            state=torch.load(state_path, map_location=self.device)
+            self.actor_target.load_state_dict(state['actor_target']); self.critic_target.load_state_dict(state['critic_target'])
+            self.actor_opt.load_state_dict(state['actor_opt']); self.critic_opt.load_state_dict(state['critic_opt'])
+            self._total_it=state['total_it']; self._env_steps=state['env_steps']
+        else:
+            self.actor_target.load_state_dict(self.actor.state_dict()); self.critic_target.load_state_dict(self.critic.state_dict())
         print(f"[{self.name}] 模型已从 {path} 加载")
         return {}

@@ -179,10 +179,13 @@ class MHSPOPolicy(PolicyInterface):
             self._link_used[n]   = {}
             self._local_count[n] = 0
 
-        return {
-            sat.sat_id: self._greedy_schedule(sat, t, global_info)
-            for sat in sats
-        }
+        result = {sat.sat_id: self._greedy_schedule(sat, t, global_info) for sat in sats}
+        # The environment mask is the authoritative final feasibility gate.
+        for n, actions in result.items():
+            for i, mask in enumerate(masks.get(n, [])):
+                if mask.sum() and not mask[actions[i]]:
+                    actions[i] = int(np.argmax(mask))
+        return result
 
     def _greedy_schedule(self, sat: "Satellite", t: int,
                          global_info: Dict) -> List[int]:

@@ -1,0 +1,92 @@
+{
+  "algorithm": "MAPPO",
+  "seed": 42,
+  "reward_definition": "common_reward_v1",
+  "train_return_definition": "mean raw system reward per environment slot since previous evaluation",
+  "environment_steps": [
+    0,
+    1000
+  ],
+  "wall_time_seconds": [
+    32.14734674299996,
+    135.91954575499994
+  ],
+  "train_return": [
+    0.0,
+    77.61515236059081
+  ],
+  "train_return_interval_mean": [
+    0.0,
+    77.61515236059081
+  ],
+  "eval_return": [
+    -9837.675632045863,
+    23147.965183322474
+  ],
+  "eval_return_total": [
+    -9837.675632045863,
+    23147.965183322474
+  ],
+  "eval_return_per_slot": [
+    -19.675351264091724,
+    46.295930366644946
+  ],
+  "completion_rate": [
+    0.5223853378316768,
+    0.7822558584845446
+  ],
+  "satisfaction": [
+    0.5284567844294806,
+    0.7879316678912565
+  ],
+  "avg_delay": [
+    5.562052714260778,
+    3.1873178692155264
+  ],
+  "avg_health_loss": [
+    0.00017240720201203301,
+    0.0002045070076357295
+  ],
+  "queue_tasks_per_sat": [
+    4.40496,
+    2.60144
+  ],
+  "gradient_updates": [
+    {
+      "ppo_updates": 0
+    },
+    {
+      "ppo_updates": 15
+    }
+  ],
+  "reward_ledger": {
+    "action_cost": [
+      -207.8109758649063,
+      -307.5280509791024
+    ],
+    "done": [
+      57290.0,
+      85790.0
+    ],
+    "timeout": [
+      -23790.0,
+      -11190.0
+    ],
+    "reject": [
+      0.0,
+      0.0
+    ],
+    "health_loss": [
+      -43101.80050300825,
+      -51126.751908932405
+    ],
+    "queue": [
+      -28.06415317269631,
+      -17.754856766056758
+    ],
+    "total": [
+      -9837.675632045863,
+      23147.965183322474
+    ]
+  }
+}
