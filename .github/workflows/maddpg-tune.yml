@@ -1,0 +1,57 @@
+name: MADDPG mini tuning
+
+on:
+  push:
+    branches: [experiment/marl-backbone-smoke]
+    paths:
+      - .github/workflows/maddpg-tune.yml
+      - satellite_mec/backbone/maddpg_tune.py
+  workflow_dispatch:
+
+jobs:
+  tune:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tag: a_lr1e-4
+            actor_lr: '1e-4'
+            critic_lr: '1e-3'
+            expl_noise: '0.10'
+          - tag: b_lr3e-4
+            actor_lr: '3e-4'
+            critic_lr: '1e-3'
+            expl_noise: '0.10'
+          - tag: c_lowcritic
+            actor_lr: '1e-4'
+            critic_lr: '3e-4'
+            expl_noise: '0.15'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Run MADDPG tuning pilot
+        working-directory: satellite_mec
+        env:
+          PYTHONPATH: ${{ github.workspace }}/satellite_mec
+          TUNE_TAG: ${{ matrix.tag }}
+          ACTOR_LR: ${{ matrix.actor_lr }}
+          CRITIC_LR: ${{ matrix.critic_lr }}
+          EXPL_NOISE: ${{ matrix.expl_noise }}
+          TUNE_TRAIN_SLOTS: '1024'
+        run: python backbone/maddpg_tune.py
+      - name: Upload tuning data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maddpg-tune-${{ matrix.tag }}
+          path: satellite_mec/results/backbone_compare/tuning/MADDPG/${{ matrix.tag }}/
+          if-no-files-found: warn
