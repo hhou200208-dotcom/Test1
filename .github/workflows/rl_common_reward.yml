@@ -4,6 +4,10 @@ on:
   push:
     branches: [rl-common-reward-single-seed]
 
+concurrency:
+  group: rl-common-reward-single-seed
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -45,9 +49,12 @@ jobs:
         run: |
           python - <<'PY'
           import importlib.util, subprocess, sys
-          packages = ['numpy','torch','scipy','matplotlib','tqdm','pytest']
+          if importlib.util.find_spec('torch') is None:
+              subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'torch',
+                                     '--index-url', 'https://download.pytorch.org/whl/cpu'])
+          packages = ['numpy','scipy','matplotlib','tqdm','pytest']
           missing = [p for p in packages if importlib.util.find_spec(p) is None]
-          print('missing:', missing)
+          print('remaining missing:', missing)
           if missing:
               subprocess.check_call([sys.executable, '-m', 'pip', 'install', *missing])
           PY
