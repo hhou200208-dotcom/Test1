@@ -1,0 +1,33 @@
+{
+  "MAPPO": {
+    "loss": -0.22540418803691864,
+    "all_actions_valid": true,
+    "elapsed_ms": 3177.5
+  },
+  "IPPO": {
+    "loss": -0.08944310992956161,
+    "all_actions_valid": true,
+    "elapsed_ms": 91.22
+  },
+  "MADDPG": {
+    "loss": 0.8900912404060364,
+    "all_actions_valid": true,
+    "elapsed_ms": 26.38
+  },
+  "QMIX": {
+    "loss": 20.496505737304688,
+    "all_actions_valid": true,
+    "elapsed_ms": 14.78
+  },
+  "shared_interface": {
+    "n_agents": 25,
+    "obs_dim": 54,
+    "global_dim": 245,
+    "action_dim": 5,
+    "shared_reward": true,
+    "dynamic_action_mask": true,
+    "seed": 7
+  },
+  "status": "PASS",
+  "note": "Smoke test validates finite forward/backward update and dynamic action-mask compliance for four algorithm skeletons. It is not yet a SatelliteMECEnv convergence run."
+}
