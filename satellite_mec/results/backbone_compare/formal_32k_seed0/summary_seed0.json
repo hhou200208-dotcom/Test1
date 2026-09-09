@@ -1,0 +1,67 @@
+[
+  {
+    "algorithm": "BLA-MAPPO",
+    "seed": 0,
+    "final_eval_return": -249.08317836280952,
+    "final_eval_cr": 0.6670190274841438,
+    "final_eval_avg_delay_s": 4.581616481774961,
+    "final_eval_total_energy_j": 6847.787393911561,
+    "final_eval_cum_hl_mean_satellite": 0.0036786146358001683,
+    "final_eval_cum_hl_system": 0.0919653658950042,
+    "final_eval_avg_dod": 0.337577866625499,
+    "final_updates": 500,
+    "wall_time_sec": 733.6500773429871
+  },
+  {
+    "algorithm": "MAPPO",
+    "seed": 0,
+    "final_eval_return": -137.0745538896157,
+    "final_eval_cr": 0.7304439746300211,
+    "final_eval_avg_delay_s": 3.353111432706223,
+    "final_eval_total_energy_j": 5843.182609659211,
+    "final_eval_cum_hl_mean_satellite": 0.002764244133809133,
+    "final_eval_cum_hl_system": 0.06910610334522832,
+    "final_eval_avg_dod": 0.3371659976034336,
+    "final_updates": 500,
+    "wall_time_sec": 1010.0736377239227
+  },
+  {
+    "algorithm": "IPPO",
+    "seed": 0,
+    "final_eval_return": -379.6952060353847,
+    "final_eval_cr": 0.7156448202959831,
+    "final_eval_avg_delay_s": 4.072378138847858,
+    "final_eval_total_energy_j": 7548.8015248764905,
+    "final_eval_cum_hl_mean_satellite": 0.005142076385522639,
+    "final_eval_cum_hl_system": 0.12855190963806598,
+    "final_eval_avg_dod": 0.33793710685643863,
+    "final_updates": 500,
+    "wall_time_sec": 949.8769648075104
+  },
+  {
+    "algorithm": "MADDPG",
+    "seed": 0,
+    "final_eval_return": -349.26415995995717,
+    "final_eval_cr": 0.63107822410148,
+    "final_eval_avg_delay_s": 4.857621440536013,
+    "final_eval_total_energy_j": 9353.987933281978,
+    "final_eval_cum_hl_mean_satellite": 0.004561985748487327,
+    "final_eval_cum_hl_system": 0.11404964371218318,
+    "final_eval_avg_dod": 0.3388749875092547,
+    "final_updates": 31993,
+    "wall_time_sec": 729.5562829971313
+  },
+  {
+    "algorithm": "QMIX",
+    "seed": 0,
+    "final_eval_return": -231.80113606845393,
+    "final_eval_cr": 0.6701902748414377,
+    "final_eval_avg_delay_s": 4.736593059936909,
+    "final_eval_total_energy_j": 6247.735528871304,
+    "final_eval_cum_hl_mean_satellite": 0.0035215468703199753,
+    "final_eval_cum_hl_system": 0.08803867175799938,
+    "final_eval_avg_dod": 0.33721274379147614,
+    "final_updates": 31976,
+    "wall_time_sec": 1272.7657771110535
+  }
+]
