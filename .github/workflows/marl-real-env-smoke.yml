@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - experiment/marl-backbone-smoke
+    paths:
+      - .github/workflows/marl-real-env-smoke.yml
+      - satellite_mec/backbone/compare_algorithms.py
+      - satellite_mec/backbone/real_env_smoke.py
   workflow_dispatch:
 
 jobs:
@@ -15,16 +19,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install runtime dependencies
+      - name: Install CPU runtime
         run: |
           python -m pip install --upgrade pip
-          pip install numpy torch
+          pip install numpy
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
       - name: Run real SatelliteMECEnv smoke test
         working-directory: satellite_mec
         env:
           PYTHONPATH: ${{ github.workspace }}/satellite_mec
-          SMOKE_TRAIN_SLOTS: '32'
-          SMOKE_EVAL_SLOTS: '8'
+          SMOKE_TRAIN_SLOTS: '64'
+          SMOKE_EVAL_SLOTS: '16'
         run: python backbone/real_env_smoke.py
       - name: Upload smoke results
         if: always()
