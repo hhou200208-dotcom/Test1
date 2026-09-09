@@ -1,4 +1,4 @@
-name: RL common reward verification
+name: RL common reward 8K pilot
 
 on:
   push:
@@ -9,10 +9,10 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  verify-and-debug:
+  pilot:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     defaults:
@@ -22,24 +22,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Mandatory repository baseline
-        working-directory: .
-        run: |
-          echo '=== git status --short ==='
-          git status --short
-          echo '=== git branch --show-current ==='
-          git branch --show-current
-          echo '=== git log -5 --oneline ==='
-          git log -5 --oneline
-          echo '=== git remote -v ==='
-          git remote -v
-          echo '=== AGENTS.md ==='
-          find .. -name AGENTS.md -print
-          echo '=== existing comparison results ==='
-          find satellite_mec/results/rl_reward_comparison -maxdepth 3 -type f -print 2>/dev/null || true
-          echo '=== virtual environments ==='
-          find . -maxdepth 3 \( -name '.venv' -o -name 'venv' -o -name 'env' \) -type d -print
 
       - uses: actions/setup-python@v5
         with:
@@ -54,73 +36,77 @@ jobs:
                                      '--index-url', 'https://download.pytorch.org/whl/cpu'])
           packages = ['numpy','scipy','matplotlib','tqdm','pytest']
           missing = [p for p in packages if importlib.util.find_spec(p) is None]
-          print('remaining missing:', missing)
           if missing:
               subprocess.check_call([sys.executable, '-m', 'pip', 'install', *missing])
           PY
+
+      - name: Required checks before pilot
+        run: |
+          cd checkpoints/LyaMAPPO_lh4_32K && md5sum -c CHECKSUMS.md5 && cd ../..
+          python -m pytest tests -q
+          git -C .. diff --check origin/main...HEAD
+          python train_rl_reward_comparison.py --help >/dev/null
+          python plot_rl_reward_comparison.py --help >/dev/null
+
+      - name: Four-algorithm 8K pilot
+        run: |
+          rm -rf results/rl_reward_comparison/pilot_8000_seed_42
+          python train_rl_reward_comparison.py \
+            --algorithms MAPPO,IPPO,MADDPG,TD3 \
+            --steps 8000 --eval-interval 2000 --eval-slots 500
+          python plot_rl_reward_comparison.py results/rl_reward_comparison/pilot_8000_seed_42
+          python finalize_rl_manifest.py results/rl_reward_comparison/pilot_8000_seed_42 \
+            --steps 8000 --eval-slots 500
+
+      - name: Validate pilot convergence data
+        run: |
           python - <<'PY'
-          import platform, numpy, torch, scipy, matplotlib, tqdm
-          print('Python', platform.python_version())
-          print('NumPy', numpy.__version__)
-          print('PyTorch', torch.__version__)
-          print('SciPy', scipy.__version__)
-          print('Matplotlib', matplotlib.__version__)
-          print('tqdm', tqdm.__version__)
-          print('CUDA available', torch.cuda.is_available())
+          import csv, json, math
+          from pathlib import Path
+          root = Path('results/rl_reward_comparison/pilot_8000_seed_42')
+          expected = [0, 2000, 4000, 6000, 8000]
+          for alg in ['mappo','ippo','maddpg','td3']:
+              h = json.loads((root/alg/'history.json').read_text())
+              assert h['environment_steps'] == expected, (alg, h['environment_steps'])
+              assert h['gradient_updates'][-1] > 0, (alg, h['gradient_updates'])
+              for key in ['eval_return_per_slot','completion_rate','satisfaction','avg_delay',
+                          'avg_health_loss','queue_tasks_per_sat','wall_time_seconds']:
+                  assert all(math.isfinite(float(x)) for x in h[key]), (alg, key)
+          print((root/'comparison.csv').read_text())
           PY
 
-      - name: Golden checkpoint checksum before tests
+      - name: Copy real small pilot artifacts into tracked docs
         run: |
-          cd checkpoints/LyaMAPPO_lh4_32K
-          md5sum -c CHECKSUMS.md5
+          dst=docs/rl_reward_comparison/pilot_8000_seed_42
+          rm -rf "$dst"
+          mkdir -p "$dst"/{mappo,ippo,maddpg,td3}
+          src=results/rl_reward_comparison/pilot_8000_seed_42
+          cp "$src"/experiment_manifest.json "$dst"/
+          cp "$src"/comparison.csv "$dst"/
+          cp "$src"/*.png "$dst"/
+          cp "$src"/*.pdf "$dst"/
+          for alg in mappo ippo maddpg td3; do cp "$src/$alg/history.json" "$dst/$alg/history.json"; done
 
-      - name: Static checks and help
+      - name: Required checks after pilot
+        run: |
+          cd checkpoints/LyaMAPPO_lh4_32K && md5sum -c CHECKSUMS.md5 && cd ../..
+          git -C .. status --short
+          git -C .. diff --check
+
+      - name: Commit genuine pilot summaries and figures
         working-directory: .
         run: |
-          git diff --check origin/main...HEAD
-          cd satellite_mec
-          python train_rl_reward_comparison.py --help
-          python plot_rl_reward_comparison.py --help
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add satellite_mec/docs/rl_reward_comparison/pilot_8000_seed_42
+          git commit -m "Add real 8K unified-reward pilot results [skip ci]"
+          git push origin HEAD:rl-common-reward-single-seed
 
-      - name: Full test suite
-        run: python -m pytest tests -q
-
-      - name: Four-algorithm 10-slot smoke
-        run: |
-          rm -rf results/rl_reward_comparison/smoke_10_seed_42
-          python train_rl_reward_comparison.py \
-            --algorithms MAPPO,IPPO,MADDPG,TD3 \
-            --steps 10 --eval-interval 10 --eval-slots 10
-          python plot_rl_reward_comparison.py results/rl_reward_comparison/smoke_10_seed_42
-
-      - name: Four-algorithm 1K debug with fixed 500-slot eval
-        run: |
-          rm -rf results/rl_reward_comparison/debug_1000_seed_42
-          python train_rl_reward_comparison.py \
-            --algorithms MAPPO,IPPO,MADDPG,TD3 \
-            --steps 1000 --eval-interval 1000 --eval-slots 500
-          python plot_rl_reward_comparison.py results/rl_reward_comparison/debug_1000_seed_42
-
-      - name: Golden checkpoint checksum after runs
-        if: always()
-        run: |
-          cd checkpoints/LyaMAPPO_lh4_32K
-          md5sum -c CHECKSUMS.md5
-
-      - name: Final repository checks
-        if: always()
-        working-directory: .
-        run: |
-          git status --short
-          git diff --check
-
-      - name: Upload real smoke/debug outputs
+      - name: Upload raw pilot results and resumable checkpoints
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rl-common-reward-smoke-debug-${{ github.sha }}
-          path: |
-            satellite_mec/results/rl_reward_comparison/smoke_10_seed_42
-            satellite_mec/results/rl_reward_comparison/debug_1000_seed_42
+          name: rl-common-reward-pilot-${{ github.sha }}
+          path: satellite_mec/results/rl_reward_comparison/pilot_8000_seed_42
           if-no-files-found: warn
           retention-days: 14
