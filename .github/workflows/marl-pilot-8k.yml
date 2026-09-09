@@ -1,0 +1,45 @@
+name: MARL 8K pilot
+
+on:
+  push:
+    branches: [experiment/marl-backbone-smoke]
+    paths:
+      - .github/workflows/marl-pilot-8k.yml
+      - satellite_mec/backbone/pilot_8k.py
+  workflow_dispatch:
+
+jobs:
+  pilot:
+    strategy:
+      fail-fast: false
+      matrix:
+        algorithm: [MAPPO, IPPO, MADDPG, QMIX]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Run tuned 8K pilot
+        working-directory: satellite_mec
+        env:
+          PYTHONPATH: ${{ github.workspace }}/satellite_mec
+          ALGORITHM: ${{ matrix.algorithm }}
+          PILOT_SEED: '0'
+          PILOT_TRAIN_SLOTS: '8192'
+          PILOT_EVAL_INTERVAL: '512'
+          PILOT_EVAL_SLOTS: '64'
+        run: python backbone/pilot_8k.py
+      - name: Upload 8K pilot data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: marl-8k-${{ matrix.algorithm }}
+          path: satellite_mec/results/backbone_compare/pilot_8k/${{ matrix.algorithm }}/seed0/
+          if-no-files-found: warn
