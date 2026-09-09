@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from math import fsum
-from typing import Dict, Mapping, Optional, Tuple
+from typing import Dict, Mapping, Optional
 
 import numpy as np
 
@@ -57,14 +57,7 @@ def compute_common_reward_v1(
     queue_norm: float,
     spec: CommonRewardSpec = COMMON_REWARD_V1,
 ) -> Dict[str, float]:
-    """Return one system-level slot reward ledger.
-
-    ``action_cost_by_sat`` contains the raw rewards returned by
-    ``Satellite.apply_action`` (negative normalized Lyapunov costs).  All other
-    components are computed exactly once here.  Health loss and queue pressure
-    are system sums normalized by the same per-satellite scales used by the
-    environment, which keeps the system reward additive across satellites.
-    """
+    """Return one system-level slot reward ledger."""
 
     hl_den = max(float(hl_norm), 1e-12)
     q_den = max(float(queue_norm), 1.0)
@@ -85,19 +78,12 @@ def distribute_system_reward(
     ledger: Mapping[str, float],
     n_sats: int,
 ) -> Dict[int, float]:
-    """Distribute non-action components without changing the system total.
-
-    The environment has a per-agent reward API while the requested comparison
-    uses one common system reward.  We retain each agent's own action cost and
-    share the common outcome term uniformly.  Consequently ``sum(rewards)`` is
-    exactly the ledger total (up to floating-point summation precision).
-    """
+    """Distribute non-action components without changing the system total."""
 
     n = max(int(n_sats), 1)
     outcome = float(ledger["total"] - ledger["action_cost"])
     share = outcome / n
     rewards = {i: float(action_cost_by_sat.get(i, 0.0) + share) for i in range(n)}
-    # Put any last-bit rounding residual on agent 0 so the invariant is exact.
     residual = float(ledger["total"] - fsum(rewards.values()))
     rewards[0] += residual
     return rewards
@@ -107,7 +93,7 @@ class CommonRewardEnv:
     """Thin wrapper applying ``common_reward_v1`` in train and eval identically.
 
     The wrapped base environment must have its legacy shaping disabled.  This
-    class also derives the slot timeout count *after* the complete base step, so
+    class derives slot timeout count *after* the complete base step, so
     forward-queue, compute-queue, and same-slot transit timeouts are all counted.
     """
 
@@ -117,7 +103,13 @@ class CommonRewardEnv:
         self._episode_timeout_after_last_step = int(base_env.episode_timeout)
 
     def __getattr__(self, name):
-        return getattr(self.base_env, name)
+        # During pickle reconstruction ``base_env`` itself has not necessarily
+        # been installed in __dict__ yet.  Raising AttributeError here prevents
+        # recursive lookups and makes exact resume/checkpoint roundtrips safe.
+        base = self.__dict__.get("base_env")
+        if base is None:
+            raise AttributeError(name)
+        return getattr(base, name)
 
     def reset(self, phase: str = "train", seeds: Optional[Dict[str, int]] = None):
         out = self.base_env.reset(phase=phase, seeds=seeds)
@@ -155,11 +147,7 @@ class CommonRewardEnv:
         return next_obs, rewards, done, info
 
     def get_local_critic_obs(self) -> Dict[int, np.ndarray]:
-        """Explicit 47-D local/no-task critic observations for IPPO.
-
-        This intentionally calls the semantic node-state constructor rather
-        than slicing the first 47 coordinates of a 245-D centralized vector.
-        """
+        """Explicit 47-D local/no-task critic observations for IPPO."""
 
         return {
             sat.sat_id: np.asarray(sat._get_node_state_47(), dtype=np.float32).copy()
