@@ -1,0 +1,74 @@
+name: BLA historical 8K reproduction
+
+on:
+  push:
+    branches: [experiment/paper-method-audit]
+    paths:
+      - .github/workflows/bla-historical-repro-8k.yml
+      - satellite_mec/backbone/bla_historical_repro_8k.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: experiment/paper-method-audit
+          fetch-depth: 0
+
+      - name: Create historical source worktree
+        run: |
+          git worktree add /tmp/historical-src c5d8f909987c77d2a7abc708b9e62f4594c33eec
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy matplotlib
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Run 8K historical BLA reproduction
+        env:
+          PYTHONPATH: /tmp/historical-src/satellite_mec
+        run: |
+          set -euo pipefail
+          OUT="$GITHUB_WORKSPACE/satellite_mec/results/backbone_compare/bla_historical_repro_8k/seed46"
+          python "$GITHUB_WORKSPACE/satellite_mec/backbone/bla_historical_repro_8k.py" \
+            --output "$OUT" \
+            --reference "$GITHUB_WORKSPACE/satellite_mec/docs/reward_curve_bla_mappo.json" \
+            --train-slots 8000 \
+            --final-eval-slots 5400 \
+            --seed 46
+
+      - name: Upload diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bla-historical-repro-8k-seed46
+          path: satellite_mec/results/backbone_compare/bla_historical_repro_8k/seed46/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Commit successful reproduction output
+        if: success()
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f satellite_mec/results/backbone_compare/bla_historical_repro_8k/seed46
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Record historical BLA 8K reproduction seed46"
+            git push origin HEAD:experiment/paper-method-audit
+          fi
