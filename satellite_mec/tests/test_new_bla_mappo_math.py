@@ -13,6 +13,7 @@ from new_bla_mappo.lifetime import (
     lifetime_curve,
     net_discharge_loss,
 )
+from train_new_bla_mappo import analyze_plateau
 
 
 class _Config:
@@ -59,6 +60,16 @@ class TestNormalizer(unittest.TestCase):
         self.assertAlmostEqual(norm.value, 4.0)
         norm.observe_slot([100.0])
         self.assertAlmostEqual(norm.value, 4.0)
+
+
+class TestPlateauAnalysis(unittest.TestCase):
+    def test_flat_tail_is_plateau(self):
+        result = analyze_plateau(np.ones(40, dtype=np.float64) * 2.0)
+        self.assertTrue(result["plateau_detected"])
+
+    def test_clear_rising_tail_is_not_plateau(self):
+        result = analyze_plateau(np.linspace(0.0, 4.0, 40, dtype=np.float64))
+        self.assertFalse(result["plateau_detected"])
 
 
 class TestDualGranularityCredit(unittest.TestCase):

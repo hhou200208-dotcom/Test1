@@ -97,6 +97,15 @@ class SatelliteMECEnv(EnvInterface):
         self._global_info = self.constellation.exchange_info()
         return {}
 
+    def begin_evaluation_from_current_state(self) -> None:
+        """Start formal metrics without resetting the warmed-up system state."""
+        self.phase = 'eval'
+        self.eval_arrived = 0
+        self.eval_done = 0
+        self.eval_timeout = 0
+        self.eval_satisfied = 0
+        self.eval_satisfaction_denom = 0
+
     # ── 主循环 ────────────────────────────────────────────────
     def step(self, actions: Optional[Dict[int, List[int]]] = None,
              policy: Optional["PolicyInterface"] = None

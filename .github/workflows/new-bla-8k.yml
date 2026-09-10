@@ -1,6 +1,9 @@
 name: new BLA-MAPPO 8K
 
 on:
+  push:
+    branches:
+      - new_BLAtest
   workflow_dispatch:
 
 permissions:
@@ -40,8 +43,10 @@ jobs:
           python train_new_bla_mappo.py
           --small_scale
           --t_train 8000
-          --t_eval 1000
+          --t_eval 5400
           --n_runs 1
+          --seed 42
+          --model_name new_BLA-MAPPO-8K-fixed
 
       - name: Print recorded metrics
         id: results
@@ -52,6 +57,8 @@ jobs:
           echo "run_dir=$run_dir" >> "$GITHUB_OUTPUT"
           echo "BLA-MAPPO 8K metrics:"
           cat "$run_dir/new_bla_eval.json"
+          test -f "$run_dir/training_reward_curve.png"
+          test -f "$run_dir/new_BLA-MAPPO/episode_reward_curve.json"
 
       - name: Upload metrics, model, logs, and reward plot
         uses: actions/upload-artifact@v4

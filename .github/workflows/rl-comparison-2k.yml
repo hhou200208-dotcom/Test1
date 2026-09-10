@@ -1,9 +1,6 @@
 name: RL algorithms 2K comparison
 
 on:
-  push:
-    branches:
-      - new_BLAtest
   workflow_dispatch:
 
 permissions:

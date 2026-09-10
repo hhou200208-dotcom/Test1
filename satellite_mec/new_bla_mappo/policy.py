@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import copy
 from dataclasses import dataclass
 from typing import Dict, List
 
@@ -359,7 +360,8 @@ class NewBLAMAPPOPolicy(PolicyInterface):
         state_t = torch.as_tensor(state, dtype=torch.float32, device=self.trainer.device)
         mask_t = torch.as_tensor(mask, dtype=torch.float32, device=self.trainer.device)
         action, log_prob, _ = self.actor.get_action(
-            state_t, mask_t, deterministic=self._eval_mode)
+            state_t, mask_t,
+            deterministic=(self._eval_mode or self._normalization_only))
         return action, log_prob
 
     def record_paper_task_transition(self, sat_id, slot_t, state, action,
@@ -415,6 +417,15 @@ class NewBLAMAPPOPolicy(PolicyInterface):
         from core.env import SatelliteMECEnv
 
         was_eval = self._eval_mode
+        # Evaluation reuses this policy object. Preserve all transient state so
+        # its final evaluation slot cannot leak into the next training critic
+        # context (especially _last_lifetime_mean in Eq. 29).
+        transient = {
+            "trackers": copy.deepcopy(self._trackers),
+            "slot_critic": copy.deepcopy(self._slot_critic),
+            "slot_task_lifetimes": list(self._slot_task_lifetimes),
+            "last_lifetime_mean": self._last_lifetime_mean,
+        }
         eval_env = SatelliteMECEnv(self.cfg)
         eval_env.reset(phase="eval", seeds=self.cfg.get_quick_eval_seeds())
         self.set_eval_mode()
@@ -433,6 +444,10 @@ class NewBLAMAPPOPolicy(PolicyInterface):
             "completion_rate": result[0], "avg_dod": result[1],
             "avg_lifetime_loss": result[2],
         })
+        self._trackers = transient["trackers"]
+        self._slot_critic = transient["slot_critic"]
+        self._slot_task_lifetimes = transient["slot_task_lifetimes"]
+        self._last_lifetime_mean = transient["last_lifetime_mean"]
         if not was_eval:
             self.set_train_mode()
         return result
@@ -443,6 +458,8 @@ class NewBLAMAPPOPolicy(PolicyInterface):
             return
         slots = int(n_slots or self.cfg.BLA_T_NORM)
         self._normalization_only = True
+        # Greedy actions are selected through _normalization_only in act_one,
+        # while train mode keeps lifetime observations enabled below.
         self.set_train_mode()
         env.reset(phase="warmup", seeds={
             "task": self.cfg.SEED + 700,
@@ -454,7 +471,12 @@ class NewBLAMAPPOPolicy(PolicyInterface):
         self.slot_lifetime_norm.freeze()
         self.task_lifetime_norm.freeze()
         self.buffer.clear()
+        self._trackers = {}
+        self._slot_critic = {}
+        self._slot_task_lifetimes = []
+        self._last_lifetime_mean = 0.0
         self._normalization_only = False
+        self.set_train_mode()
 
     def save(self, path: str, extra_info: dict | None = None) -> None:
         extra = {

@@ -118,13 +118,17 @@ class ExperimentRunner:
         self.logger.info(f"L_MAX：{cfg.L_MAX:.4e} → {l_max_new:.4e}")
         cfg.L_MAX = l_max_new; cfg.L_MAX_CALIBRATED = True
 
-    def run_training(self, policy, env: "SatelliteMECEnv") -> None:
+    def run_training(self, policy, env: "SatelliteMECEnv",
+                     seeds: Optional[Dict[str, int]] = None) -> None:
         """训练 MAPPOPolicy（需要 training 模块）。"""
         cfg = self.cfg
         recorder = self.recorders[policy.name]
         alg_dir  = self.result_dirs[policy.name]
         self.logger.info(f"[{policy.name}] 训练：{cfg.T_TRAIN} 时隙")
-        env.reset(phase='train'); policy.set_train_mode()
+        # A reset without explicit seeds continues whatever RNG stream was
+        # consumed by calibration.  Pass named training seeds so standalone
+        # 2K/8K/32K runs share the same prefix trajectory.
+        env.reset(phase='train', seeds=seeds); policy.set_train_mode()
         episode_idx = 0; start = time.time()
         checkpt_interval = max(cfg.K_ROLLOUT * 100, 1000)
         reward_curve = []                                  # 每-槽系统总奖励（最密，~32000 点）
