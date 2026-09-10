@@ -1,6 +1,9 @@
-name: new BLA-MAPPO 32K demo1
+name: new BLA-MAPPO 32K fixed
 
 on:
+  push:
+    branches:
+      - new_BLAtest
   workflow_dispatch:
 
 permissions:
@@ -42,7 +45,8 @@ jobs:
           --t_train 32000
           --t_eval 5400
           --n_runs 1
-          --model_name new_BLA-MAPPOdemo1
+          --seed 42
+          --model_name new_BLA-MAPPO-32K-fixed
 
       - name: Print recorded metrics
         id: results
@@ -50,16 +54,17 @@ jobs:
         run: |
           run_dir=$(find satellite_mec/results -mindepth 1 -maxdepth 1 -type d -name '*_new_BLA_MAPPO' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
           test -n "$run_dir"
-          test -d "$run_dir/new_BLA-MAPPOdemo1"
+          test -d "$run_dir/new_BLA-MAPPO-32K-fixed"
           test -f "$run_dir/training_reward_curve.png"
+          test -f "$run_dir/new_BLA-MAPPO/episode_reward_curve.json"
           echo "run_dir=$run_dir" >> "$GITHUB_OUTPUT"
-          echo "BLA-MAPPO 32K demo1 metrics:"
+          echo "BLA-MAPPO 32K fixed metrics:"
           cat "$run_dir/new_bla_eval.json"
 
       - name: Upload experiment, final model, and reward plot
         uses: actions/upload-artifact@v4
         with:
-          name: new-BLA-MAPPOdemo1-${{ github.sha }}
+          name: new-BLA-MAPPO-32K-fixed-${{ github.sha }}
           path: ${{ steps.results.outputs.run_dir }}
           if-no-files-found: error
           retention-days: 90
