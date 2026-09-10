@@ -1,9 +1,6 @@
 name: new BLA-MAPPO 32K fixed
 
 on:
-  push:
-    branches:
-      - new_BLAtest
   workflow_dispatch:
 
 permissions:
