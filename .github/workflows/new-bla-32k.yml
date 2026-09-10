@@ -1,6 +1,9 @@
-name: new BLA-MAPPO 8K
+name: new BLA-MAPPO 32K demo1
 
 on:
+  push:
+    branches:
+      - new_BLAtest
   workflow_dispatch:
 
 permissions:
@@ -9,7 +12,7 @@ permissions:
 jobs:
   train-and-evaluate:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 360
     env:
       MPLBACKEND: Agg
       PYTHONUNBUFFERED: "1"
@@ -34,14 +37,15 @@ jobs:
         working-directory: satellite_mec
         run: python -m unittest tests.test_new_bla_mappo_math
 
-      - name: Run 5x5 BLA-MAPPO 8K test
+      - name: Run 5x5 BLA-MAPPO 32K training
         working-directory: satellite_mec
         run: >-
           python train_new_bla_mappo.py
           --small_scale
-          --t_train 8000
-          --t_eval 1000
+          --t_train 32000
+          --t_eval 5400
           --n_runs 1
+          --model_name new_BLA-MAPPOdemo1
 
       - name: Print recorded metrics
         id: results
@@ -49,14 +53,16 @@ jobs:
         run: |
           run_dir=$(find satellite_mec/results -mindepth 1 -maxdepth 1 -type d -name '*_new_BLA_MAPPO' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
           test -n "$run_dir"
+          test -d "$run_dir/new_BLA-MAPPOdemo1"
+          test -f "$run_dir/training_reward_curve.png"
           echo "run_dir=$run_dir" >> "$GITHUB_OUTPUT"
-          echo "BLA-MAPPO 8K metrics:"
+          echo "BLA-MAPPO 32K demo1 metrics:"
           cat "$run_dir/new_bla_eval.json"
 
-      - name: Upload metrics, model, logs, and reward plot
+      - name: Upload experiment, final model, and reward plot
         uses: actions/upload-artifact@v4
         with:
-          name: new-bla-8k-results-${{ github.sha }}
+          name: new-BLA-MAPPOdemo1-${{ github.sha }}
           path: ${{ steps.results.outputs.run_dir }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90

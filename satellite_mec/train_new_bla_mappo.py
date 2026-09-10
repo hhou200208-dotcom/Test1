@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import time
 
 import numpy as np
@@ -39,6 +40,8 @@ def parse_args():
     parser.add_argument("--no_eval", action="store_true")
     parser.add_argument("--checkpoint", default=None,
                         help="Optional checkpoint to load before training/evaluation")
+    parser.add_argument("--model_name", default="new_BLA-MAPPO",
+                        help="Directory name used for the exported final model")
     return parser.parse_args()
 
 
@@ -114,6 +117,11 @@ def main():
 
     policy.calibrate_normalizers(env)
     runner.run_training(policy, env)
+    source_model_dir = os.path.join(runner.result_dirs[policy.name], "model")
+    exported_model_dir = os.path.join(runner.base_dir, args.model_name)
+    if os.path.abspath(source_model_dir) != os.path.abspath(exported_model_dir):
+        shutil.copytree(source_model_dir, exported_model_dir)
+        print(f"Final model exported to {exported_model_dir}")
     if args.no_eval:
         return
 
@@ -127,10 +135,13 @@ def main():
     tail_size = min(100, reward_curve.size)
     summary = {
         "algorithm": policy.name,
+        "saved_model": args.model_name,
         "paper_equations": [10, 12, 18, 21, 22, 23, 25, 26, 27, 28, 29,
                             31, 32, 33, 34, 35, 36, 37, 38],
         "config": {
             "n_sats": cfg.N_SATS,
+            "t_train": cfg.T_TRAIN,
+            "t_eval": cfg.T_EVAL,
             "rho_l": cfg.BLA_RHO_L,
             "lambda_q": cfg.BLA_LAMBDA_Q,
             "lambda_l": cfg.BLA_LAMBDA_L,
