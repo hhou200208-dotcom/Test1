@@ -134,7 +134,11 @@ class ExperimentRunner:
         for t in iterator:
             _, done, info = policy.run_step(env)
             recorder.record_slot(info, phase='train')
-            reward_curve.append(float(info.get('reward_ledger', {}).get('total', 0.0)))
+            # Paper-faithful BLA-MAPPO exposes its actual optimized system
+            # reward explicitly; legacy policies continue using reward_ledger.
+            reward_curve.append(float(info.get(
+                'new_bla_system_reward',
+                info.get('reward_ledger', {}).get('total', 0.0))))
             if done:
                 recorder.record_episode(episode_idx); episode_idx += 1
                 if (policy.trainer.update_count > 0

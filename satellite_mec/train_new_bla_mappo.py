@@ -19,6 +19,7 @@ import os
 import time
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 from core import SatelliteMECEnv
 from evaluation import ExperimentRunner
@@ -47,24 +48,52 @@ def evaluate(policy, env, cfg, n_runs: int, t_eval: int) -> list[dict]:
     for run_idx in range(n_runs):
         env.reset(phase="eval", seeds=cfg.get_eval_seeds(run_idx))
         cumulative_lifetime = 0.0
-        energy, delays = [], []
+        energy, delays, slot_lifetime = [], [], []
         last_info = {}
         start = time.time()
         for _ in range(t_eval):
             _, _, last_info = policy.run_step(env)
-            cumulative_lifetime += float(sum(last_info["paper_lifetime_losses"]))
+            slot_hl = float(sum(last_info["paper_lifetime_losses"]))
+            cumulative_lifetime += slot_hl
+            slot_lifetime.append(slot_hl)
             energy.append(last_info["slot_system_energy"])
             delays.extend(last_info["slot_e2e_delays"])
+        hl_tail_size = min(640, len(slot_lifetime))
         rows.append({
             "run": run_idx,
             "completion_rate": last_info.get("eval_completion_rate", 0.0),
             "satisfaction": last_info.get("eval_satisfaction_rate", 0.0),
             "cumulative_lifetime_loss": cumulative_lifetime,
+            "mean_lifetime_loss_per_slot": float(np.mean(slot_lifetime)),
+            "last_640_mean_lifetime_loss": float(
+                np.mean(slot_lifetime[-hl_tail_size:])),
+            "last_640_slots_used": hl_tail_size,
             "mean_system_energy_j": float(np.mean(energy)),
             "mean_completed_delay_s": float(np.mean(delays)) if delays else 0.0,
             "elapsed_s": time.time() - start,
         })
     return rows
+
+
+def plot_reward_curve(reward_curve: np.ndarray, output_path: str) -> None:
+    """Save the complete per-slot reward and a readable 100-slot moving mean."""
+    x = np.arange(1, reward_curve.size + 1)
+    window = min(100, reward_curve.size)
+    kernel = np.ones(window, dtype=np.float64) / window
+    moving = np.convolve(reward_curve, kernel, mode="valid")
+
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    ax.plot(x, reward_curve, color="#4C78A8", alpha=0.22, linewidth=0.7,
+            label="Per-slot reward")
+    ax.plot(x[window - 1:], moving, color="#E45756", linewidth=2.0,
+            label=f"{window}-slot moving mean")
+    ax.set(title="new_BLA-MAPPO Training Reward (5x5)",
+           xlabel="Training slot", ylabel="System reward")
+    ax.grid(alpha=0.25)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
 
 
 def main():
@@ -93,6 +122,8 @@ def main():
     reward_path = os.path.join(runner.result_dirs[policy.name], "reward_curve.json")
     with open(reward_path, "r", encoding="utf-8") as stream:
         reward_curve = np.asarray(json.load(stream), dtype=np.float64)
+    reward_plot_path = os.path.join(runner.base_dir, "training_reward_curve.png")
+    plot_reward_curve(reward_curve, reward_plot_path)
     tail_size = min(100, reward_curve.size)
     summary = {
         "algorithm": policy.name,
@@ -115,6 +146,7 @@ def main():
             "first_100_mean": float(np.mean(reward_curve[:tail_size])),
             "last_100_mean": float(np.mean(reward_curve[-tail_size:])),
             "curve_file": os.path.relpath(reward_path, runner.base_dir),
+            "plot_file": os.path.basename(reward_plot_path),
         },
         "runs": rows,
     }
