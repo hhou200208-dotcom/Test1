@@ -1,0 +1,57 @@
+name: RL algorithms 2K comparison
+
+on:
+  push:
+    branches:
+      - new_BLAtest
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      MPLBACKEND: Agg
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: satellite_mec/requirements-new-bla.txt
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install -r satellite_mec/requirements-new-bla.txt
+      - name: Run math and comparison tests
+        working-directory: satellite_mec
+        run: python -m unittest tests.test_new_bla_mappo_math tests.test_rl_comparison
+      - name: Train and evaluate five algorithms
+        working-directory: satellite_mec
+        run: >-
+          python train_rl_comparison.py
+          --t_train 2000
+          --t_eval 1000
+          --output results/rl_comparison_2k
+      - name: Verify and print results
+        working-directory: satellite_mec
+        run: |
+          test -f results/rl_comparison_2k/training_reward_comparison.png
+          test -f results/rl_comparison_2k/comparison_summary.json
+          for name in new_BLA-MAPPO MAPPO IPPO MADDPG QMIX; do
+            test -d "results/rl_comparison_2k/models/$name"
+            test -f "results/rl_comparison_2k/${name}_reward.json"
+          done
+          cat results/rl_comparison_2k/comparison_summary.json
+      - name: Upload comparison results
+        uses: actions/upload-artifact@v4
+        with:
+          name: rl-comparison-2k-${{ github.sha }}
+          path: satellite_mec/results/rl_comparison_2k
+          if-no-files-found: error
+          retention-days: 90

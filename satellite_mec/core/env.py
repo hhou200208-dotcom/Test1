@@ -303,6 +303,19 @@ class SatelliteMECEnv(EnvInterface):
             ledger['hl']      += r_hl
             ledger['queue']   += r_queue
             ledger['dod']     += r_dod
+
+        # Fair multi-algorithm experiments may replace the legacy Lyapunov
+        # reward with one explicitly shared reward definition.  This happens
+        # after all slot outcomes and exact paper lifetime losses are known.
+        if policy is not None and hasattr(policy, 'build_comparison_rewards'):
+            rewards = policy.build_comparison_rewards(
+                per_sat_satisfied=satisfied_per_sat,
+                per_sat_timeout=timeout_per_sat,
+                per_sat_rejected=rejected_per_sat,
+                lifetime_losses=paper_lifetime_losses,
+            )
+            ledger['comparison_total'] = float(sum(rewards.values()))
+            ledger['total'] = ledger['comparison_total']
         # 已经在 step 内累加进 rewards 的"action_cost"（来自 sat.apply_action 返回的 −Lyapunov_cost）
         # 这里再做一次汇总，避免重复计算时把 reward 整体丢失
         ledger['action_cost'] = float(sum(rewards.values())) - sum(ledger.values()) \
