@@ -116,9 +116,16 @@ class SatelliteMECEnv(EnvInterface):
         self.episode_arrived += slot_arrived
         rejected_count = 0
         rejected_per_sat = {n: 0 for n in range(cfg.N_SATS)}
+        # Keep pre-decision timeouts per satellite so paper-faithful policies can
+        # build the service term O_n(t), rather than seeing only an aggregate.
+        timeout_per_sat = {n: 0 for n in range(cfg.N_SATS)}
         for sat in sats:
             for task in tasks_by_sat.get(sat.sat_id, []):
-                if not sat.admit_task(task):
+                if policy is not None and hasattr(policy, 'admit_task'):
+                    admitted = policy.admit_task(self, sat, task)
+                else:
+                    admitted = sat.admit_task(task)
+                if not admitted:
                     rejected_count += 1
                     rejected_per_sat[sat.sat_id] += 1
 
@@ -129,7 +136,10 @@ class SatelliteMECEnv(EnvInterface):
                 sat.init_temp_state()
                 slot_to = sat.remove_timeout_tasks(t)
                 self.episode_timeout += len(slot_to)
+                timeout_per_sat[sat.sat_id] += len(slot_to)
                 sat.sort_forward_queue(t)
+            if hasattr(policy, 'begin_slot'):
+                policy.begin_slot(self)
             if hasattr(policy, 'collect_critic_values'):
                 policy.collect_critic_values(self)
             if not sequential:
@@ -161,10 +171,18 @@ class SatelliteMECEnv(EnvInterface):
 
             for task in tasks_to_process:
                 neighbor_nb = {nid: self._global_info[nid]['nb'] for nid in sat.neighbors}
-                mask = sat.get_action_mask(task, t, neighbor_nb)
+                if sequential and hasattr(policy, 'build_action_mask'):
+                    mask = policy.build_action_mask(
+                        self, sat, task, t, neighbor_info, neighbor_nb)
+                else:
+                    mask = sat.get_action_mask(task, t, neighbor_nb)
                 if mask.sum() == 0:
                     continue
-                state = sat.get_state(task, t, neighbor_info)
+                if sequential and hasattr(policy, 'build_actor_state'):
+                    state = policy.build_actor_state(
+                        self, sat, task, t, neighbor_info)
+                else:
+                    state = sat.get_state(task, t, neighbor_info)
                 next_obs[n].append(state)
 
                 if sequential:
@@ -181,11 +199,22 @@ class SatelliteMECEnv(EnvInterface):
                 if action >= len(mask) or mask[action] == 0:
                     action = int(np.argmax(mask))
 
+                structured_cost = None
+                if sequential and hasattr(policy, 'task_structured_cost'):
+                    structured_cost = policy.task_structured_cost(
+                        self, sat, task, action, t, neighbor_info, commit=True)
+
                 reward, forward_info = sat.apply_action(
                     task, action, t, neighbor_info, self.lyapunov_calc)
                 rewards[n]    += reward
                 n_executed[n] += 1
-                if sequential and hasattr(policy, 'record_task_transition'):
+                if sequential and hasattr(policy, 'record_paper_task_transition'):
+                    policy.record_paper_task_transition(
+                        sat_id=n, slot_t=t, state=state, action=action,
+                        log_prob=log_prob, mask=mask,
+                        structured_cost=float(structured_cost or 0.0),
+                    )
+                elif sequential and hasattr(policy, 'record_task_transition'):
                     policy.record_task_transition(
                         sat_id=n, slot_t=t, state=state, action=action,
                         log_prob=log_prob, mask=mask, task_reward=reward,
@@ -202,7 +231,6 @@ class SatelliteMECEnv(EnvInterface):
         slot_timeout_deadlines: List[float] = []       # 超时任务的 ddl，用于"全任务"延迟 PDF
         nb_start_map    = {sat.sat_id: sat.nb for sat in sats}
         done_per_sat    = {n: 0 for n in range(cfg.N_SATS)}
-        timeout_per_sat = {n: 0 for n in range(cfg.N_SATS)}
         satisfied_per_sat = {n: 0 for n in range(cfg.N_SATS)}
         delay_sum_per_sat = {n: 0.0 for n in range(cfg.N_SATS)}   # Zhong Y_n: per-sat E2E 时延和
         delay_cnt_per_sat = {n: 0 for n in range(cfg.N_SATS)}
@@ -245,9 +273,15 @@ class SatelliteMECEnv(EnvInterface):
                 timeout_per_sat[sat.sat_id] += len(transit_timeout)
 
         # 7. DoD / alpha 更新
+        dod_before_map = {sat.sat_id: sat.dod for sat in sats}
         for sat in sats:
             sat.update_dod(nb_start=nb_start_map[sat.sat_id])
             sat.update_alpha_avg()
+
+        paper_lifetime_losses = None
+        if policy is not None and hasattr(policy, 'compute_slot_lifetime_losses'):
+            paper_lifetime_losses = policy.compute_slot_lifetime_losses(
+                self, dod_before_map)
 
         # 8. Outcome-aware reward 注入 + reward ledger 记录组成
         #    ledger 总是计算（包括 eval 阶段），方便诊断；reward 注入仅训练阶段生效
@@ -313,6 +347,12 @@ class SatelliteMECEnv(EnvInterface):
                                  for s in self.constellation.satellites],
             'per_sat_delay_sum':[delay_sum_per_sat[s.sat_id] for s in self.constellation.satellites],
             'per_sat_delay_cnt':[delay_cnt_per_sat[s.sat_id] for s in self.constellation.satellites],
+            # Paper-facing decomposed signals. Existing policies ignore these;
+            # new BLA-MAPPO uses them to construct Eq. (22)-(23) exactly.
+            'per_sat_satisfied': [satisfied_per_sat[n] for n in range(cfg.N_SATS)],
+            'per_sat_timeout':   [timeout_per_sat[n] for n in range(cfg.N_SATS)],
+            'per_sat_rejected':  [rejected_per_sat[n] for n in range(cfg.N_SATS)],
+            'paper_lifetime_losses': paper_lifetime_losses,
             'episode_arrived':   self.episode_arrived,
             'episode_done':      self.episode_done,
             'episode_timeout':   self.episode_timeout,

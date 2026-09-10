@@ -1,0 +1,6 @@
+# Dependencies for new_BLA-MAPPO. Pin exact versions for archival experiments.
+numpy>=1.24
+torch>=2.1
+matplotlib>=3.7
+scipy>=1.10
+tqdm>=4.65
