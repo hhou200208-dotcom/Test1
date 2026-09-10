@@ -1,0 +1,20 @@
+{
+  "eval_slots": 5400,
+  "system_reward_sum_total": 84109.43487520478,
+  "system_reward_sum_per_slot": 15.57582127318607,
+  "mean_agent_reward_per_slot": 0.6230328509274429,
+  "arrived": 119176,
+  "done": 89615,
+  "satisfied": 89615,
+  "timeout": 29491,
+  "completion_rate_done_over_arrived": 0.7519550916291871,
+  "satisfaction_satisfied_over_arrived": 0.7519550916291871,
+  "historical_satisfaction_satisfied_over_done_plus_timeout": 0.7523970244991856,
+  "avg_completed_e2e_delay_s": 3.346292473358255,
+  "system_delay_overhead_s_per_slot": 55.53296296296296,
+  "total_dynamic_energy_j": 2828618.20891315,
+  "system_energy_overhead_kj_per_slot": 0.5238181868357685,
+  "cumulative_system_lifetime_loss": 29.889318358664607,
+  "avg_dod": 0.46545340303131727,
+  "train_wall_time_sec": 412.6005620956421
+}

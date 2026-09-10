@@ -1,0 +1,24 @@
+{
+  "n_reward_slots": 8000,
+  "raw_reward_mean": 113.24127874712987,
+  "raw_reward_std": 45.22280913352919,
+  "first_quarter_mean": 96.57615441936251,
+  "last_quarter_mean": 121.55653673444301,
+  "smoothed700_first_episode_magnitude": 5799.341612233092,
+  "smoothed700_last_episode_magnitude": 7695.911754028341,
+  "smoothed1600_first_episode_magnitude": 6080.709507438058,
+  "smoothed1600_last_episode_magnitude": 7729.9818659975845,
+  "ppo_entropy_first": 0.7960491100947062,
+  "ppo_entropy_last": 0.5182778507471084,
+  "quick_eval_last": {
+    "update": 120,
+    "completion_rate": 0.7559580123440105,
+    "avg_dod": 0.40229478063622337,
+    "avg_health_loss": 0.00014392818465311147
+  },
+  "reference_slots_used": 8000,
+  "reference_first_quarter_mean": 97.59500940903602,
+  "reference_last_quarter_mean": 123.04016247383257,
+  "reference_smoothed700_first_episode_magnitude": 5953.558739960584,
+  "reference_smoothed700_last_episode_magnitude": 7764.727859440657
+}
