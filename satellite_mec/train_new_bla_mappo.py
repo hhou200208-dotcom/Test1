@@ -110,7 +110,9 @@ def analyze_plateau(episode_rewards: np.ndarray, tail: int = 30) -> dict:
     half = n // 2
     window_change = float(np.mean(values[-half:]) - np.mean(values[:half])) if half else 0.0
     ci95 = 1.96 * slope_se
-    significant_trend = bool(abs(slope) > ci95)
+    # Exact-flat synthetic tails can yield machine-epsilon slopes with an even
+    # smaller fitted CI; treat sub-1e-12 slopes as numerically zero.
+    significant_trend = bool(abs(slope) > max(ci95, 1e-12))
     # The effect-size guard prevents calling a visibly drifting but noisy tail
     # a plateau merely because its regression lacks power.
     plateau = bool(n >= 30 and not significant_trend and abs(window_change) <= 0.5)
