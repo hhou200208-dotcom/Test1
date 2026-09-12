@@ -114,6 +114,14 @@ class SatelliteMECEnv(EnvInterface):
         cfg = self.cfg
         sats = self.constellation.satellites
 
+        # Slot-boundary energy ledger.  These values are observational only:
+        # they do not enter the transition or reward calculation.  Keeping the
+        # start state before solar/task processing makes the counterfactual
+        # battery calculation auditable at satellite-slot granularity.
+        battery_start_j = {
+            sat.sat_id: cfg.E_CAP * (1.0 - sat.dod) for sat in sats
+        }
+
         # 1. 广播全局状态 & 更新日照
         self._global_info = self.constellation.exchange_info()
         for sat in sats:
@@ -122,6 +130,9 @@ class SatelliteMECEnv(EnvInterface):
         # 2. 任务生成与入队
         tasks_by_sat  = self.constellation.generate_tasks(t)
         slot_arrived  = sum(len(v) for v in tasks_by_sat.values())
+        arrived_per_sat = {
+            n: len(tasks_by_sat.get(n, [])) for n in range(cfg.N_SATS)
+        }
         self.episode_arrived += slot_arrived
         rejected_count = 0
         rejected_per_sat = {n: 0 for n in range(cfg.N_SATS)}
@@ -243,6 +254,7 @@ class SatelliteMECEnv(EnvInterface):
         satisfied_per_sat = {n: 0 for n in range(cfg.N_SATS)}
         delay_sum_per_sat = {n: 0.0 for n in range(cfg.N_SATS)}   # Zhong Y_n: per-sat E2E 时延和
         delay_cnt_per_sat = {n: 0 for n in range(cfg.N_SATS)}
+        completed_bits_per_sat = {n: 0.0 for n in range(cfg.N_SATS)}
 
         for sat in sats:
             done_tasks, compute_timeout = sat.process_tasks(t)
@@ -259,6 +271,7 @@ class SatelliteMECEnv(EnvInterface):
                 slot_done_deadlines.append(task.deadline)
                 delay_sum_per_sat[sat.sat_id] += real_delay
                 delay_cnt_per_sat[sat.sat_id] += 1
+                completed_bits_per_sat[sat.sat_id] += task.size
                 if real_delay <= task.deadline:
                     slot_satisfied += 1
                     satisfied_per_sat[sat.sat_id] += 1
@@ -338,6 +351,24 @@ class SatelliteMECEnv(EnvInterface):
             self.slots_in_episode = 0
 
         stats = self.constellation.get_stats()
+        battery_end_j = {
+            sat.sat_id: cfg.E_CAP * (1.0 - sat.dod) for sat in sats
+        }
+        solar_energy_j = {
+            sat.sat_id: sat.solar_power * cfg.TAU for sat in sats
+        }
+        base_energy_j = {
+            sat.sat_id: sat.slot_house_energy for sat in sats
+        }
+        battery_counterfactual_j = {
+            sat.sat_id: min(
+                cfg.E_CAP,
+                battery_start_j[sat.sat_id]
+                + solar_energy_j[sat.sat_id]
+                - base_energy_j[sat.sat_id],
+            )
+            for sat in sats
+        }
         info  = {
             'slot': t, 'phase': self.phase,
             'arrived': slot_arrived, 'done_tasks': slot_done,
@@ -369,6 +400,26 @@ class SatelliteMECEnv(EnvInterface):
                                  for s in self.constellation.satellites],
             'per_sat_delay_sum':[delay_sum_per_sat[s.sat_id] for s in self.constellation.satellites],
             'per_sat_delay_cnt':[delay_cnt_per_sat[s.sat_id] for s in self.constellation.satellites],
+            # Per-satellite slot ledger for offline DoD/energy attribution.
+            'per_sat_battery_start_j': [battery_start_j[n] for n in range(cfg.N_SATS)],
+            'per_sat_battery_end_j': [battery_end_j[n] for n in range(cfg.N_SATS)],
+            'per_sat_battery_counterfactual_j': [
+                battery_counterfactual_j[n] for n in range(cfg.N_SATS)
+            ],
+            'per_sat_solar_energy_j': [solar_energy_j[n] for n in range(cfg.N_SATS)],
+            'per_sat_base_energy_j': [base_energy_j[n] for n in range(cfg.N_SATS)],
+            'per_sat_compute_energy_j': [
+                sat.slot_comp_energy for sat in self.constellation.satellites
+            ],
+            'per_sat_tx_energy_j': [
+                sat.slot_trans_energy for sat in self.constellation.satellites
+            ],
+            'per_sat_arrived': [arrived_per_sat[n] for n in range(cfg.N_SATS)],
+            'per_sat_completed': [done_per_sat[n] for n in range(cfg.N_SATS)],
+            'per_sat_ontime': [satisfied_per_sat[n] for n in range(cfg.N_SATS)],
+            'per_sat_completed_bits': [
+                completed_bits_per_sat[n] for n in range(cfg.N_SATS)
+            ],
             # Paper-facing decomposed signals. Existing policies ignore these;
             # new BLA-MAPPO uses them to construct Eq. (22)-(23) exactly.
             'per_sat_satisfied': [satisfied_per_sat[n] for n in range(cfg.N_SATS)],

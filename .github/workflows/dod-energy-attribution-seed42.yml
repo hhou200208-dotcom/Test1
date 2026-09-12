@@ -1,0 +1,72 @@
+name: DoD energy attribution seed 42
+
+on:
+  push:
+    branches:
+      - new_BLAtest
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate-and-plot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      MPLBACKEND: Agg
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: satellite_mec/requirements-new-bla.txt
+
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install -r satellite_mec/requirements-new-bla.txt
+
+      - name: Verify attribution ledger and formulas
+        working-directory: satellite_mec
+        run: >-
+          python -m unittest
+          tests.test_dod_energy_attribution
+          tests.test_new_bla_mappo_math
+
+      - name: Run shared-gold-warmup three-policy evaluation
+        working-directory: satellite_mec
+        run: >-
+          python run_dod_energy_attribution.py
+          --seed 42
+          --warmup-slots 5400
+          --eval-slots 5400
+          --output-dir results/dod-energy-attribution-seed42
+
+      - name: Verify and print derived results
+        shell: bash
+        run: |
+          out=satellite_mec/results/dod-energy-attribution-seed42
+          test -s "$out/satellite_slot_metrics.csv"
+          test -s "$out/run_manifest.json"
+          test -s "$out/figures/derived_summary.json"
+          test -s "$out/figures/fig_a_energy_by_dod.png"
+          test -s "$out/figures/fig_b_high_dod_ratios.png"
+          test -s "$out/figures/fig_c_lifetime_by_dod_and_discharge.png"
+          test -s "$out/figures/fig_d_high_dod_occupancy.png"
+          cat "$out/run_manifest.json"
+          cat "$out/figures/derived_summary.json"
+
+      - name: Upload CSV, derived metrics, and four figures
+        uses: actions/upload-artifact@v4
+        with:
+          name: dod-energy-attribution-seed42-${{ github.sha }}
+          path: satellite_mec/results/dod-energy-attribution-seed42
+          if-no-files-found: error
+          retention-days: 90
