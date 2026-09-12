@@ -29,6 +29,7 @@ class TestSatelliteSlotLedger(unittest.TestCase):
         keys = (
             "per_sat_battery_start_j", "per_sat_battery_end_j",
             "per_sat_battery_counterfactual_j", "per_sat_solar_energy_j",
+            "per_sat_battery_counterfactual_physical_j",
             "per_sat_base_energy_j", "per_sat_compute_energy_j",
             "per_sat_tx_energy_j", "per_sat_arrived", "per_sat_completed",
             "per_sat_ontime", "per_sat_completed_bits", "per_sat_delay_sum",
@@ -43,6 +44,22 @@ class TestSatelliteSlotLedger(unittest.TestCase):
                 - info["per_sat_base_energy_j"][n],
             )
             self.assertAlmostEqual(info["per_sat_battery_counterfactual_j"][n], expected)
+            expected_physical = max(cfg.E_CAP * (1.0 - cfg.DOD_MAX), expected)
+            self.assertAlmostEqual(
+                info["per_sat_battery_counterfactual_physical_j"][n], expected_physical
+            )
+            expected_end = min(
+                cfg.E_CAP * (1.0 - cfg.DOD_MIN),
+                max(
+                    cfg.E_CAP * (1.0 - cfg.DOD_MAX),
+                    info["per_sat_battery_start_j"][n]
+                    + info["per_sat_solar_energy_j"][n]
+                    - info["per_sat_base_energy_j"][n]
+                    - info["per_sat_compute_energy_j"][n]
+                    - info["per_sat_tx_energy_j"][n],
+                ),
+            )
+            self.assertAlmostEqual(info["per_sat_battery_end_j"][n], expected_end)
 
     def test_fixed_dod_bins_include_upper_endpoint(self):
         self.assertEqual(dod_bin(0.0), 0)
@@ -55,6 +72,7 @@ class TestSatelliteSlotLedger(unittest.TestCase):
             "algorithm", "seed", "scenario", "time_slot", "eval_slot", "satellite_id",
             "battery_start_j", "battery_capacity_j", "battery_end_j",
             "battery_counterfactual_j", "solar_energy_j", "base_energy_j",
+            "battery_counterfactual_physical_j",
             "compute_energy_j", "tx_energy_j", "arrived_tasks", "completed_tasks",
             "ontime_tasks", "timeout_tasks", "rejected_tasks", "completed_bits",
             "completion_delay_sum_s",
@@ -70,6 +88,7 @@ class TestSatelliteSlotLedger(unittest.TestCase):
                         "time_slot": 1, "eval_slot": 0, "satellite_id": 0,
                         "battery_start_j": 43_200, "battery_capacity_j": 54_000,
                         "battery_end_j": 43_190, "battery_counterfactual_j": 43_200,
+                        "battery_counterfactual_physical_j": 43_200,
                         "solar_energy_j": 5, "base_energy_j": 5,
                         "compute_energy_j": 8, "tx_energy_j": 2,
                         "arrived_tasks": 1, "completed_tasks": 1, "ontime_tasks": 1,

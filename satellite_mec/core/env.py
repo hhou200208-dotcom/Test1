@@ -369,6 +369,13 @@ class SatelliteMECEnv(EnvInterface):
             )
             for sat in sats
         }
+        battery_counterfactual_physical_j = {
+            sat.sat_id: max(
+                cfg.E_CAP * (1.0 - cfg.DOD_MAX),
+                battery_counterfactual_j[sat.sat_id],
+            )
+            for sat in sats
+        }
         info  = {
             'slot': t, 'phase': self.phase,
             'arrived': slot_arrived, 'done_tasks': slot_done,
@@ -405,6 +412,9 @@ class SatelliteMECEnv(EnvInterface):
             'per_sat_battery_end_j': [battery_end_j[n] for n in range(cfg.N_SATS)],
             'per_sat_battery_counterfactual_j': [
                 battery_counterfactual_j[n] for n in range(cfg.N_SATS)
+            ],
+            'per_sat_battery_counterfactual_physical_j': [
+                battery_counterfactual_physical_j[n] for n in range(cfg.N_SATS)
             ],
             'per_sat_solar_energy_j': [solar_energy_j[n] for n in range(cfg.N_SATS)],
             'per_sat_base_energy_j': [base_energy_j[n] for n in range(cfg.N_SATS)],

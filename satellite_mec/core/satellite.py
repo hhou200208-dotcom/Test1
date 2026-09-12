@@ -542,8 +542,20 @@ class Satellite:
         ) / cfg.E_CAP)
         delta_house = cfg.P_HOUSEKEEPING * cfg.TAU / cfg.E_CAP
         delta_solar_raw = self.solar_power * cfg.TAU / cfg.E_CAP
-        delta_solar = min(delta_solar_raw, max(dod_before - cfg.DOD_MIN, 0.0))
-        delta = delta_comp + delta_trans + delta_house - delta_solar
+
+        # Settle all same-slot inflows/outflows before applying battery bounds.
+        # The previous order curtailed solar against the *start* headroom and
+        # only then subtracted base/task loads.  Near a full battery that lost
+        # usable same-slot solar and violated B(t+1)=B(t)+solar-base-task.
+        battery_unclipped = cfg.E_CAP * (
+            1.0 - dod_before
+            + delta_solar_raw - delta_house - delta_comp - delta_trans
+        )
+        battery_min = cfg.E_CAP * (1.0 - cfg.DOD_MAX)
+        battery_max = cfg.E_CAP * (1.0 - cfg.DOD_MIN)
+        battery_next = float(np.clip(battery_unclipped, battery_min, battery_max))
+        dod_next = 1.0 - battery_next / cfg.E_CAP
+        delta = dod_next - dod_before
 
         # 诊断字段：本时隙该卫星实际消耗能量(J)，供"系统总能耗图"汇总（由 env 求和）
         self.slot_comp_energy  = delta_comp  * cfg.E_CAP   # 计算能耗 = TAU·KAPPA·f_cmp³
@@ -560,7 +572,7 @@ class Satellite:
         self.slot_delta_l_trans = l_prime * delta_trans
         self.slot_health_loss   = self.slot_delta_l_comp + self.slot_delta_l_trans
 
-        self.dod = float(np.clip(dod_before + delta, cfg.DOD_MIN, cfg.DOD_MAX))
+        self.dod = float(dod_next)
         self.z   = max(self.z + delta, 0.0)
 
     def update_alpha_avg(self) -> None:

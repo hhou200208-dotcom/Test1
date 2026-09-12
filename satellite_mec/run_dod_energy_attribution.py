@@ -37,7 +37,8 @@ POLICIES = (
 CSV_FIELDS = (
     "algorithm", "seed", "scenario", "time_slot", "eval_slot", "satellite_id",
     "battery_start_j", "battery_capacity_j", "battery_end_j",
-    "battery_counterfactual_j", "solar_energy_j", "base_energy_j",
+    "battery_counterfactual_j", "battery_counterfactual_physical_j",
+    "solar_energy_j", "base_energy_j",
     "compute_energy_j", "tx_energy_j", "arrived_tasks", "completed_tasks",
     "ontime_tasks", "timeout_tasks", "rejected_tasks", "completed_bits",
     "completion_delay_sum_s",
@@ -106,6 +107,9 @@ def write_slot_rows(writer: csv.DictWriter, algorithm: str, seed: int,
         "battery_start_j": info["per_sat_battery_start_j"],
         "battery_end_j": info["per_sat_battery_end_j"],
         "battery_counterfactual_j": info["per_sat_battery_counterfactual_j"],
+        "battery_counterfactual_physical_j": info[
+            "per_sat_battery_counterfactual_physical_j"
+        ],
         "solar_energy_j": info["per_sat_solar_energy_j"],
         "base_energy_j": info["per_sat_base_energy_j"],
         "compute_energy_j": info["per_sat_compute_energy_j"],
@@ -133,6 +137,9 @@ def write_slot_rows(writer: csv.DictWriter, algorithm: str, seed: int,
             "battery_capacity_j": cfg.E_CAP,
             "battery_end_j": arrays["battery_end_j"][n],
             "battery_counterfactual_j": arrays["battery_counterfactual_j"][n],
+            "battery_counterfactual_physical_j": arrays[
+                "battery_counterfactual_physical_j"
+            ][n],
             "solar_energy_j": arrays["solar_energy_j"][n],
             "base_energy_j": arrays["base_energy_j"][n],
             "compute_energy_j": arrays["compute_energy_j"][n],

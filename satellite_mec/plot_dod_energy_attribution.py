@@ -103,7 +103,8 @@ def read_and_aggregate(csv_path: Path) -> tuple[dict, dict, dict]:
             cap = float(row["battery_capacity_j"])
             b_start = float(row["battery_start_j"])
             b_end = float(row["battery_end_j"])
-            b_zero = float(row["battery_counterfactual_j"])
+            b_zero_raw = float(row["battery_counterfactual_j"])
+            b_zero = float(row["battery_counterfactual_physical_j"])
             solar_energy = float(row["solar_energy_j"])
             base_energy = float(row["base_energy_j"])
             task_energy = float(row["compute_energy_j"]) + float(row["tx_energy_j"])
@@ -130,7 +131,7 @@ def read_and_aggregate(csv_path: Path) -> tuple[dict, dict, dict]:
             raw_actual = min(cap, b_start + solar_energy - base_energy - task_energy)
             expected_actual = max(cap * (1.0 - DOD_EDGES[-1]), raw_actual)
             s["max_counterfactual_formula_error_j"] = max(
-                s["max_counterfactual_formula_error_j"], abs(b_zero - expected_zero)
+                s["max_counterfactual_formula_error_j"], abs(b_zero_raw - expected_zero)
             )
             s["max_actual_transition_error_j"] = max(
                 s["max_actual_transition_error_j"], abs(b_end - expected_actual)
