@@ -1,9 +1,6 @@
 name: DoD energy attribution seed 42
 
 on:
-  push:
-    branches:
-      - new_BLAtest
   workflow_dispatch:
 
 permissions:
