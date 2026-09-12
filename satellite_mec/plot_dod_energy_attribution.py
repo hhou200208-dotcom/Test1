@@ -16,8 +16,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-ALGORITHMS = ("w/o DoD", "w/ Linear-DoD", "BLA-MAPPO")
-COLORS = {"w/o DoD": "#7F7F7F", "w/ Linear-DoD": "#1F77B4", "BLA-MAPPO": "#D62728"}
+ALGORITHMS = ("w/o DoD", "w/ Linear-DoD", "BLA-MAPPO", "GDCO", "MHSPO")
+COLORS = {
+    "w/o DoD": "#7F7F7F", "w/ Linear-DoD": "#1F77B4",
+    "BLA-MAPPO": "#D62728", "GDCO": "#9467BD", "MHSPO": "#2CA02C",
+}
 DOD_EDGES = np.asarray((0.0, 0.2, 0.4, 0.6, 0.8), dtype=float)
 DOD_LABELS = ("[0, 0.2)", "[0.2, 0.4)", "[0.4, 0.6)", "[0.6, 0.8]")
 DOD_COLORS = ("#4C78A8", "#72B7B2", "#F2CF5B", "#E45756")
@@ -216,7 +219,7 @@ def finalize_summary(stats: dict, meta: dict) -> dict:
         }
     bla = out["algorithms"]["BLA-MAPPO"]
     out["comparison_conditions"] = {}
-    for baseline in ("w/o DoD", "w/ Linear-DoD"):
+    for baseline in (a for a in ALGORITHMS if a != "BLA-MAPPO"):
         base = out["algorithms"][baseline]
         mean_energy = 0.5 * (
             bla["task_energy_per_completed_task_j"] + base["task_energy_per_completed_task_j"]
@@ -260,7 +263,7 @@ def plot_a(summary: dict, output: Path) -> None:
         ])
         ax.bar(x, values, bottom=bottom, color=color, edgecolor="white", width=0.68, label=label)
         bottom += values
-    ax.set_xticks(x, ALGORITHMS)
+    ax.set_xticks(x, ALGORITHMS, rotation=12)
     ax.set_ylabel("Task energy per completed task (J/task)")
     ax.set_title("(a) Task energy allocation by starting DoD")
     ax.legend(title="Starting DoD", frameon=False, fontsize=8.5)
@@ -279,7 +282,7 @@ def plot_b(summary: dict, output: Path) -> None:
     discharge = [100 * summary["algorithms"][a]["high_dod_discharge_ratio"] for a in ALGORITHMS]
     ax.bar(x - width / 2, energy, width, color="#F28E2B", label="High-DoD energy ratio")
     ax.bar(x + width / 2, discharge, width, color="#C44E52", label="High-DoD discharge ratio")
-    ax.set_xticks(x, ALGORITHMS)
+    ax.set_xticks(x, ALGORITHMS, rotation=12)
     ax.set_ylabel("Ratio (%)")
     ax.set_title("(b) Task activity occurring at DoD >= 0.6")
     ax.legend(frameon=False)
@@ -308,7 +311,8 @@ def cell_estimate(cell_sat: dict, algorithm: str, discharge_idx: int,
 
 
 def plot_c(cell_sat: dict, output: Path) -> None:
-    fig, axes = plt.subplots(1, 3, figsize=(13.2, 4.5), sharex=True, sharey=True)
+    fig, axes_grid = plt.subplots(2, 3, figsize=(13.2, 8.0), sharex=True, sharey=True)
+    axes = axes_grid.ravel()
     x = 0.5 * (DOD_EDGES[:-1] + DOD_EDGES[1:])
     for ax, algorithm in zip(axes, ALGORITHMS):
         for j, (label, color) in enumerate(zip(DISCHARGE_LABELS, DISCHARGE_COLORS)):
@@ -325,7 +329,10 @@ def plot_c(cell_sat: dict, output: Path) -> None:
         ax.set_xlabel("Starting DoD")
         style(ax)
     axes[0].set_ylabel("Task-induced lifetime loss per slot")
-    axes[-1].legend(title="Task-induced delta DoD", fontsize=7.5, frameon=False)
+    axes[3].set_ylabel("Task-induced lifetime loss per slot")
+    axes[-1].axis("off")
+    handles, labels = axes[0].get_legend_handles_labels()
+    axes[-1].legend(handles, labels, title="Task-induced delta DoD", loc="center", fontsize=8, frameon=False)
     fig.suptitle("(c) Lifetime loss at matched task-induced discharge", y=1.02)
     fig.text(
         0.5, -0.02,

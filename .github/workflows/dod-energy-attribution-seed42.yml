@@ -9,7 +9,7 @@ permissions:
 jobs:
   evaluate-and-plot:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 360
     env:
       MPLBACKEND: Agg
       PYTHONUNBUFFERED: "1"
@@ -37,7 +37,7 @@ jobs:
           tests.test_dod_energy_attribution
           tests.test_new_bla_mappo_math
 
-      - name: Run shared-gold-warmup three-policy evaluation
+      - name: Run shared-gold-warmup five-policy evaluation
         working-directory: satellite_mec
         run: >-
           python run_dod_energy_attribution.py
