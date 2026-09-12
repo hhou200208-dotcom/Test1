@@ -1,10 +1,6 @@
 name: DoD energy attribution seed 42
 
 on:
-  push:
-    branches: [new_BLAtest]
-    paths:
-      - .github/workflows/dod-energy-attribution-seed42.yml
   workflow_dispatch:
 
 permissions:
