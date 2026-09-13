@@ -1,0 +1,19 @@
+{
+  "format_version": 2,
+  "description": "Gold BLA-MAPPO post-warm-up environment and MHSPO predictor state",
+  "n_planes": 16,
+  "sats_per_plane": 12,
+  "n_sats": 192,
+  "seed": 42,
+  "warmup_slots": 5400,
+  "current_slot": 5400,
+  "training_constellation": "5x5 (25 satellites)",
+  "source_checkpoint": "checkpoints/LyaMAPPO_lh4_32K",
+  "source_actor_sha256": "c20e9f92a1c0d5c211a65d60d9a4e9ac4d07eea02db5f3f02efd29c59f473981",
+  "source_commit": "56632c784a55302e7699f170ff408109c090d85a",
+  "python_version": "3.11.16",
+  "numpy_version": "2.4.6",
+  "payload_sha256": "9c771851fe7cc91374412bd05bef228c9c34dfd162fc672d782e69fa64fe7ece",
+  "compressed_sha256": "7439110bdb244015ec41ca5f1283750f4386c97c8b29a722ff8d05d6ce62b3a3",
+  "compressed_bytes": 4578889
+}
