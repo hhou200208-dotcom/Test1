@@ -294,7 +294,10 @@ def plot_results(summary_csv: Path, output_dir: Path) -> list[Path]:
         ax.set_title(f"{title} vs. constellation size")
         ax.grid(axis="y", alpha=0.25)
         ax.spines[["top", "right"]].set_visible(False)
-        ax.legend(frameon=False, ncol=2, fontsize=8.5)
+        ax.legend(
+            frameon=True, framealpha=0.92, edgecolor="none",
+            loc="upper left", ncol=2, fontsize=8.5,
+        )
         ax.text(
             0.01, -0.22,
             "Frozen 25-satellite-trained learned policies; common gold warm-up; seed=42 (no CI)",
@@ -305,6 +308,49 @@ def plot_results(summary_csv: Path, output_dir: Path) -> list[Path]:
         fig.savefig(path, dpi=240, bbox_inches="tight")
         plt.close(fig)
         paths.append(path)
+
+    fig, axes = plt.subplots(2, 2, figsize=(12.4, 8.4))
+    handles = []
+    labels = []
+    for ax, (field, title, ylabel, _) in zip(axes.flat, plots):
+        for algorithm in ALGORITHMS:
+            subset = sorted(
+                (row for row in rows if row["algorithm"] == algorithm),
+                key=lambda row: int(row["n_sats"]),
+            )
+            if not subset:
+                continue
+            x = np.asarray([int(row["n_sats"]) for row in subset])
+            y = np.asarray([float(row[field]) for row in subset])
+            color, marker = PLOT_STYLE[algorithm]
+            line, = ax.plot(
+                x, y, color=color, marker=marker,
+                linewidth=2.5 if algorithm == "BLA-MAPPO" else 1.8,
+                markersize=5.5, label=algorithm,
+            )
+            if len(handles) < len(ALGORITHMS):
+                handles.append(line)
+                labels.append(algorithm)
+        ax.set_xticks(sorted({int(row["n_sats"]) for row in rows}))
+        ax.set_xlabel("Number of satellites, N")
+        ax.set_ylabel(ylabel)
+        ax.set_title(title, fontsize=12)
+        ax.grid(axis="y", alpha=0.25)
+        ax.spines[["top", "right"]].set_visible(False)
+    fig.legend(
+        handles, labels, loc="upper center", bbox_to_anchor=(0.5, 0.995),
+        ncol=5, frameon=False, fontsize=10,
+    )
+    fig.text(
+        0.5, 0.012,
+        "Frozen 5x5-trained learned policies; common 5,400-slot gold BLA-MAPPO warm-up; seed=42 (no CI)",
+        ha="center", fontsize=9, color="#555555",
+    )
+    fig.tight_layout(rect=(0, 0.045, 1, 0.93), h_pad=2.1, w_pad=2.0)
+    overview = output_dir / "fig_0_scalability_overview.png"
+    fig.savefig(overview, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    paths.insert(0, overview)
     return paths
 
 
