@@ -7,7 +7,7 @@ import csv
 import json
 from pathlib import Path
 
-from run_load_robustness import SLOT_FIELDS, SUMMARY_FIELDS, plot_results
+from run_load_robustness import ALGORITHMS, SLOT_FIELDS, SUMMARY_FIELDS, plot_results
 
 
 def find_files(root: Path, filename: str) -> list[Path]:
@@ -42,12 +42,23 @@ def main() -> None:
     args = parse_args()
     summary_rows = read_rows(find_files(args.input_root, "load_robustness_summary.csv"))
     slot_rows = read_rows(find_files(args.input_root, "load_robustness_slot_metrics.csv"))
-    summary_rows.sort(key=lambda row: float(row["alpha"]))
-    slot_rows.sort(key=lambda row: (float(row["alpha"]), int(row["eval_slot"])))
-    actual = [float(row["alpha"]) for row in summary_rows]
+    summary_rows.sort(key=lambda row: (ALGORITHMS.index(row["algorithm"]), float(row["alpha"])))
+    slot_rows.sort(key=lambda row: (
+        ALGORITHMS.index(row["algorithm"]), float(row["alpha"]), int(row["eval_slot"])
+    ))
+    actual = sorted({float(row["alpha"]) for row in summary_rows})
     expected = sorted(args.expected_alpha)
     if actual != expected:
         raise RuntimeError(f"alpha coverage mismatch: expected {expected}, got {actual}")
+    actual_algorithms = {row["algorithm"] for row in summary_rows}
+    if actual_algorithms != set(ALGORITHMS):
+        raise RuntimeError(
+            f"algorithm coverage mismatch: expected {ALGORITHMS}, got {actual_algorithms}"
+        )
+    expected_pairs = {(algorithm, alpha) for algorithm in ALGORITHMS for alpha in expected}
+    actual_pairs = {(row["algorithm"], float(row["alpha"])) for row in summary_rows}
+    if actual_pairs != expected_pairs or len(summary_rows) != len(expected_pairs):
+        raise RuntimeError("algorithm/alpha matrix is incomplete or duplicated")
 
     output_dir = args.output_dir.resolve()
     summary_csv = output_dir / "load_robustness_summary.csv"
@@ -56,7 +67,8 @@ def main() -> None:
     write_rows(slot_csv, SLOT_FIELDS, slot_rows)
     figures = plot_results(summary_csv, output_dir / "figures")
     manifest = {
-        "experiment": "combined zero-shot BLA-MAPPO business-load robustness",
+        "experiment": "combined seven-policy business-load robustness",
+        "algorithms": list(ALGORITHMS),
         "alphas": actual,
         "summary_rows": len(summary_rows),
         "slot_rows": len(slot_rows),
