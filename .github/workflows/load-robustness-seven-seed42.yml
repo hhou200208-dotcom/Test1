@@ -1,0 +1,151 @@
+name: Seven-policy business-load robustness seed 42
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [new_BLAtest]
+    paths:
+      - .github/workflows/load-robustness-seven-seed42.yml
+
+jobs:
+  verify-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MPLBACKEND: Agg
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: new_BLAtest
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: satellite_mec/requirements-new-bla.txt
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install -r satellite_mec/requirements-new-bla.txt
+      - name: Verify implementation and checkpoints
+        working-directory: satellite_mec
+        run: |
+          (cd checkpoints/LyaMAPPO_lh4_32K && md5sum -c CHECKSUMS.md5)
+          (cd checkpoints/MADDPG_DoD_lh4_32K && md5sum -c CHECKSUMS.md5)
+          python -m unittest tests.test_load_robustness tests.test_dod_energy_attribution tests.test_new_bla_mappo_math tests.test_scalability_evaluation
+      - name: Run seven-policy smoke experiment
+        working-directory: satellite_mec
+        run: >-
+          python run_load_robustness.py
+          --alphas 1.0 --seed 42
+          --warmup-slots 2 --eval-slots 3
+          --output-dir results/load_robustness_seven_smoke
+
+  evaluate-alpha:
+    needs: verify-and-smoke
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - alpha: 0.5
+            tag: "050"
+          - alpha: 0.75
+            tag: "075"
+          - alpha: 1.0
+            tag: "100"
+          - alpha: 1.25
+            tag: "125"
+          - alpha: 1.5
+            tag: "150"
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      MPLBACKEND: Agg
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: new_BLAtest
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: satellite_mec/requirements-new-bla.txt
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install -r satellite_mec/requirements-new-bla.txt
+      - name: Run full seven-policy experiment for this alpha
+        working-directory: satellite_mec
+        run: >-
+          python run_load_robustness.py
+          --alphas ${{ matrix.alpha }} --seed 42
+          --warmup-slots 5400 --eval-slots 5400
+          --output-dir results/load_robustness_seven_alpha${{ matrix.tag }}_seed42
+      - name: Verify per-alpha outputs
+        shell: bash
+        run: |
+          out=satellite_mec/results/load_robustness_seven_alpha${{ matrix.tag }}_seed42
+          test "$(($(wc -l < "$out/load_robustness_summary.csv") - 1))" -eq 7
+          test "$(($(wc -l < "$out/load_robustness_slot_metrics.csv") - 1))" -eq 37800
+          test -s "$out/run_manifest.json"
+          test -s "$out/figures/fig_1_user_satisfaction.png"
+          test -s "$out/figures/fig_2_system_delay.png"
+          test -s "$out/figures/fig_3_system_energy.png"
+          test -s "$out/figures/fig_4_total_lifetime_loss.png"
+          cat "$out/load_robustness_summary.csv"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: load-robustness-seven-alpha${{ matrix.tag }}-seed42-${{ github.sha }}
+          path: satellite_mec/results/load_robustness_seven_alpha${{ matrix.tag }}_seed42
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate-and-plot:
+    needs: evaluate-alpha
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: new_BLAtest
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install plotting dependencies
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install numpy matplotlib
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: load-robustness-seven-alpha*-seed42-${{ github.sha }}
+          path: downloaded-load-robustness-seven
+      - name: Merge CSV files and draw four curves
+        working-directory: satellite_mec
+        run: >-
+          python aggregate_load_robustness_results.py
+          --input-root ../downloaded-load-robustness-seven
+          --output-dir results/load_robustness_seven_seed42
+          --expected-alpha 0.5 0.75 1.0 1.25 1.5
+      - name: Verify combined deliverable
+        shell: bash
+        run: |
+          out=satellite_mec/results/load_robustness_seven_seed42
+          test "$(($(wc -l < "$out/load_robustness_summary.csv") - 1))" -eq 35
+          test "$(($(wc -l < "$out/load_robustness_slot_metrics.csv") - 1))" -eq 189000
+          test -s "$out/figures/fig_0_load_robustness_overview.png"
+          test -s "$out/figures/fig_1_user_satisfaction.png"
+          test -s "$out/figures/fig_2_system_delay.png"
+          test -s "$out/figures/fig_3_system_energy.png"
+          test -s "$out/figures/fig_4_total_lifetime_loss.png"
+          cat "$out/load_robustness_summary.csv"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: load-robustness-seven-seed42-combined-${{ github.sha }}
+          path: satellite_mec/results/load_robustness_seven_seed42
+          if-no-files-found: error
+          retention-days: 90
